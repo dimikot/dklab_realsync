@@ -21,10 +21,10 @@ Main RealSync benefits:
    
 3. It is damned fast even on extremely large directories! Just change a file 
    and you'll see these changes immediately at the remote side (it's true for 
-   Windows and MacOS X; Linux version is a bit slower still). If you change
-   lots of files, RealSync will run RSYNC automatically to reflect all changes.
+   Windows, MacOS X, Linux). If you change lots of files, RealSync will run 
+   RSYNC automatically to reflect all changes.
    
-4. It minimizes to tray (on Windows) and dings a quiet sound on each change
+4. On Windows - it minimizes to tray and dings a quiet sound on each change
    which is successfully transferred.
    
 5. It has an installation wizard which automatically creates all needed SSH
@@ -48,7 +48,7 @@ Usage for Windows
 Usage for Linux, FreeBSD, MacOS X (darwin)
 ------------------------------------------
 
-1. Place contents of this directory somewhere, e.g.:
+1. Place contents of this directory somewhere, e.g. (or somewhere else):
      /opt/dklab_realsync/
    
 2. Create a desktop shortcut for command-line:
@@ -97,4 +97,13 @@ remote side. RSYNC, which is used by RealSync as one of the synchronization
 method, has this feedback, so RealSync keeps local and remote directories 
 identical. 
 
-So I had to create RealSync.
+
+Programmers
+-----------
+
+Dmitry Koterov
+  Author & maintainer of the RealSync Perl script and "notify" tool for win32.
+  
+Yuri Nasretdinov
+  Found, adapted (mainly rewrote) source codes and built "notify" tool 
+  for Linux and MacOS.

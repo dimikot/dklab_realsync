@@ -44,7 +44,11 @@ my $REM_SCRIPT = get_remote_script();
 my $SSH_PID;
 my @TREE;
 my $IN_REPLICATION = 0;
-my $HOOKS = ($ENV{COMSPEC} && 'Realsync::Win32') || ($^O =~ /darwin/i && 'Realsync::Darwin') || 'Realsync::Generic';
+my $HOOKS = 
+	($ENV{COMSPEC} && 'Realsync::Win32') 
+	|| ($^O =~ /darwin/i && 'Realsync::Darwin') 
+	|| ($^O =~ /linux/i && 'Realsync::Linux') 
+	|| 'Realsync::Generic';
 my %PENDING: shared = ();
 
 
@@ -358,8 +362,8 @@ sub do_install {
 		
 		# Check if we have already passwordless access.
 		print "   checking if we have access without a password to this host...\n";
-		my $cmd = "ssh -q -o PasswordAuthentication=no -o StrictHostKeyChecking=no $user\@$host exit";
-		last if system($cmd) == 0;
+		my $cmd_check = "ssh -q -o PasswordAuthentication=no -o StrictHostKeyChecking=no $user\@$host exit";
+		last if system($cmd_check) == 0;
 		
 		# Use a custom SSH key (create a new one if no key exists).
 		mkpath(dirname($FILE_IDENTITY), 0, 0700);
@@ -1239,6 +1243,24 @@ sub get_notify_daemon_cmd {
 	return if !-f $bin;
 	die "ATTENTION! You must perform:\n  chmod +x '$bin'\nto work with RealSync. Please do it now.\n" if !-x $bin;
 	my $cmd = '"' . $bin . '" "' . main::cfg("local") . '"';
+	return $cmd;
+}
+}}}}}
+
+
+
+##
+## Linux hooks.
+##
+{{{{{
+package Realsync::Linux;
+our @ISA = 'Realsync::Generic';
+
+sub get_notify_daemon_cmd {
+	my $bin = $BINDIR . '/bin/linux/notify';
+	return if !-f $bin;
+	die "ATTENTION! You must perform:\n  chmod +x '$bin'\nto work with RealSync. Please do it now.\n" if !-x $bin;
+	my $cmd = '"' . $bin . '" watch "' . main::cfg("local") . '"';
 	return $cmd;
 }
 }}}}}
