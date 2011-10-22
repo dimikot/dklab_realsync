@@ -1,0 +1,24 @@
+RSync utility is from cwRsync: http://www.itefix.no/cwrsync/
+Perl is ActivePerl 5.10
+
+
+1. Non-ASCII characters in Windows RealSync's installation path
+
+Note that only the old cwRsync 3.1.0 could properly work with non-ASCII
+characters in folder names if RealSync is installed in such folder!
+Newer cwRsync 4.0+ is based on Cygwin DLL 1.7.1-1+ which is still very 
+buggy (even if we correctly set LC_ALL environment variable).
+
+So, if you update cwRsync to a newer version in this directory, and the 
+path to this directory includes non-ASCII characters, rsync will probably 
+not work.
+
+
+2. Non-ASCII characters in replicated files/folders
+
+If a source OS'es encoding differs from a destination OS'es encoding,
+RealSync does not support non-ASCII characters in replicated filenames.
+Reasons:
+
+a) server rsync version 3.0+ (with --iconv support) is quite rare;
+b) we need all Perl's iconv libraries (more than 2M).

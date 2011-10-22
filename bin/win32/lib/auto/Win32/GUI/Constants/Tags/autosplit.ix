@@ -1,0 +1,8 @@
+# Index created by AutoSplit for ..\blib\lib\Win32\GUI/Constants/Tags.pm
+#    (file acts as timestamp)
+package Win32::GUI::Constants::Tags;
+sub tag_stockobjects ();
+sub tag_button ();
+sub tag_dc ();
+sub tag_compatibility_win32_gui ();
+1;

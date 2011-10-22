@@ -1,0 +1,1375 @@
+#!/usr/bin/perl -w
+use Cwd qw(getcwd abs_path);
+use strict;
+use File::Basename;
+use File::Path qw(mkpath rmtree);
+use File::Spec;
+use IPC::Open2;
+use IO::Handle;
+use Digest::MD5 'md5_hex';
+use Fcntl ':mode';
+use POSIX ":sys_wait_h";
+use threads;
+use threads::shared;
+
+# Paths (will be filled later automatically).
+my $DIR_HOME = undef;                 # path to user's home directory
+my $DIR_PRIVATE = undef;              # private area directory (holds e.g. .ssh folder)
+my $FILE_CONFIG = undef;              # config file
+my $DIR_SSH = undef;                  # private .ssh folder path
+my $FILE_IDENTITY = undef;            # identity file within .ssh folder
+
+# Constants.
+my $BINDIR = dirname(abs_path(__FILE__));
+my $DELAY = 0.2;
+my $DEBUG_PATCH_TREE = 0;
+my $SSH_VERBOSE = 0;
+my $MIN_CHANGES_FOR_RSYNC = 10;
+my @SSH_OPTIONS = (
+	"-o", "Compression=yes",
+	"-o", "CompressionLevel=9",
+	"-o", "ConnectTimeout=3",
+	"-o", "ServerAliveInterval=2",
+	"-o", "ServerAliveCountMax=2",
+	"-o", "StrictHostKeyChecking=no",
+);
+my @RSYNC_OPTIONS = (
+	"-rltzv", 
+	"--delete",
+);
+my @RSYNC_WRAPPER = ();
+my @RSYNC_SSH_WRAPPER = ();
+
+# Globals.
+my %CONFIG;
+my $REM_SCRIPT = get_remote_script();
+my $SSH_PID;
+my @TREE;
+my $IN_REPLICATION = 0;
+my $HOOKS = ($ENV{COMSPEC} && 'Realsync::Win32') || ($^O =~ /darwin/i && 'Realsync::Darwin') || 'Realsync::Generic';
+my %PENDING: shared = ();
+
+
+#
+# Does everything,
+#
+sub main {
+	eval { 
+		print "dkLab RealSync: replicate developer's files over SSH in realtime.\n\n";
+
+		# Make remote script's subs available.
+		eval("sub { $REM_SCRIPT }"); die $@ if $@;
+				
+		# If an argument is passed, chdir to that directory. Else use the current one.
+		my $chdir = $ARGV[0];
+		if (!$chdir) {
+			die "Usage:\n  realsync SOURCE_DIRECTORY_WHICH_IS_REPLICATED\n";
+		}
+		chdir($chdir) or die "Cannot set current directory to $chdir: $!\n";
+
+		# Initialize and (possibly) correct environment.
+		$HOOKS->init_env();
+
+		# Save proper HOME directory for later usage.
+		$DIR_HOME = $ENV{HOME} or die "Environment variable HOME must be set!\n";
+		
+		# Correct pathes.
+		build_pathes_based_on_cwd();
+
+		# Run the mainloop.
+		mainloop(); 
+	};
+	if ($@) {
+		if (!$IN_REPLICATION) {
+			print STDERR $@;
+		} else {
+			logger($@);
+		}
+		print STDERR "\nPress Enter to quit... ";
+		scalar <STDIN>;
+	}
+}
+
+
+#
+# Main execution loop.
+# Called inside eval{} block to catch errors and print them.
+#
+sub mainloop {
+	binmode(STDIN);  STDIN->autoflush(1);
+	binmode(STDOUT); STDOUT->autoflush(1);
+	binmode(STDERR); STDERR->autoflush(1);
+
+	$SIG{CHLD} = 'IGNORE'; # later, if you use system(), reset this signal!
+	$SIG{INT} = $SIG{TERM} = $SIG{KILL} = sub { onexit(); exit; };
+
+	if (!-d $DIR_PRIVATE || !-f $FILE_CONFIG) {
+		do_install();
+	}
+
+	# Read configuration.
+	%CONFIG = read_config($FILE_CONFIG);
+	
+	# We MUST avoid chdir: in Cygwin we have problems with non-ASCII names.
+	-d cfg("local") or die "Bad local directory " . cfg("local") . ": $!\n";
+	
+	$IN_REPLICATION = 1;
+
+	spawn_notify_daemon();
+	$HOOKS->init_gui();
+
+	while (1) {
+		eval { do_replication() };
+		logger($@) if $@;
+		onexit(1);
+	}
+}
+
+
+#
+# Called at script dead.
+#
+sub onexit {
+	my ($iteration_end) = @_;
+	if ($IN_REPLICATION) {
+		kill(9, $SSH_PID) if $SSH_PID;
+		$SSH_PID = undef;
+		notification("wait");
+	}
+	if (!$iteration_end) {
+		$HOOKS->finalize_env() if $HOOKS;
+	}
+}
+
+
+#
+# Called at the end of script.
+#
+sub END {
+	onexit();
+}
+
+
+#
+# Builds pathes and saves it to global variables.
+#
+sub build_pathes_based_on_cwd {
+	# First, try to use legacy scheme.
+	build_pathes_based_on_cwd_legacy();
+	return if -f $FILE_CONFIG;
+	# Use a new scheme.
+	my $cwd = getcwd();
+	my $hash = $cwd;
+	$hash =~ s{^\w:[/\\]|[/\\]+$}{}sg;
+	$hash =~ s{\W+}{_}sgi;
+	$hash = substr($hash, -80) if length($hash) > 80;
+	$hash = substr(md5_hex($cwd), 0, 10) . "_" . $hash;
+	# Build pathes.
+	$DIR_PRIVATE   = $DIR_HOME . "/.realsync/" . $hash;
+	$DIR_SSH       = "$DIR_PRIVATE/.ssh";
+	$FILE_IDENTITY = "$DIR_SSH/identity";
+	$FILE_CONFIG   = "$cwd/.realsync";
+	# Substitute HOME for ssh execution (it searches for .ssh within HOME).
+	$ENV{HOME}     = $DIR_PRIVATE;
+}
+
+
+#
+# Legacy pathes for configuration.
+#
+sub build_pathes_based_on_cwd_legacy {
+	$DIR_PRIVATE = $DIR_HOME . "/.realsync/" . substr(md5_hex(getcwd()), 0, 10);
+	$FILE_CONFIG = "$DIR_PRIVATE/realsync.ini";
+	$DIR_SSH = "$DIR_PRIVATE/.ssh";
+	$FILE_IDENTITY = "$DIR_SSH/identity";
+	$ENV{HOME} = $DIR_PRIVATE; # to save ssh keys etc.
+}
+
+
+#
+# Executes the whole replication algorithm.
+#
+sub do_replication {
+	# Run SSH asynchronously to save time.
+	do_run_ssh("Initiating a background connection with " . cfg("remote") . "...");
+
+	# Read initial state BEFORE rsync!
+	@TREE = ();
+	my $num_objs = grep { $_->{type} eq "dir" } get_changes();
+
+	# Initial rsync.
+	do_rsync("Fast initial rsync synchronization...") if !$DEBUG_PATCH_TREE;
+
+	# Watching.
+	logger("", 0, 1);
+	do_watch("Watching for changes in $num_objs folder(s)...");
+}
+
+
+#
+# Executes RSYNC command.
+#
+sub do_rsync {
+	my ($msg) = @_;
+	my @rsync_cmd = (
+		@RSYNC_WRAPPER,
+		"rsync", 
+		"-e", join(" ", @RSYNC_SSH_WRAPPER, "ssh", "-i", $FILE_IDENTITY, @SSH_OPTIONS), 
+		@RSYNC_OPTIONS,
+		$HOOKS->convert_rsync_local_path(cfg("local")) . "/", # the trailing slash is significant!
+		cfg("user") . '@' . cfg("host") . ":" . cfg("remote") . "/",
+		map { ("--exclude", $_) } @{cfg("exclude", 1)},
+	);
+	notification("rsync");
+	while (1) {
+		logger($msg);
+		#logger(join(" ", map { /\s|\*/s? '"' . $_ . '"' : $_ } @rsync_cmd));
+		local $SIG{CHLD}; # else system() does not work
+		my $exitcode = system(@rsync_cmd);
+		if (!defined $exitcode || $exitcode < 0) {
+			logger("Failed to run rsync: $!\n");
+		} elsif ($exitcode & 127) {
+			logger("Rsync died with signal " . ($exitcode & 127));
+		} elsif (($exitcode >> 8) == 0) {
+			last;
+		} else {
+			logger("Rsync exited with code " . ($exitcode >> 8) . ", retrying...");
+		}
+		usleep(0.5);
+	}
+	notification("wait");
+}
+
+
+#
+# Executes background SSH process which is used to push changes.
+#
+sub do_run_ssh {
+	my ($msg) = @_;
+	logger($msg);
+	my @ssh_cmd = (
+		"ssh", 
+		($SSH_VERBOSE? ("-v") : ()), 
+		"-i", $FILE_IDENTITY,
+		@SSH_OPTIONS,
+		cfg("user") . '@' . cfg("host"), 
+		"perl -we '$REM_SCRIPT' 2>&1" 
+	);
+	# Unfortunately on Win32 we cannot read from a handle returned
+	# from the first open2's argument - Perl hangs even if buffering
+	# is correctly turned off. So we cannot receive a feedback from
+	# a remote SSH and are just passively displaying its output.
+	$SSH_PID = open2(">&STDOUT", \*IN, @ssh_cmd) or die "Cannot run ssh: $!\n";
+	binmode IN; IN->autoflush(1);
+}
+
+
+#
+# Performs endless changes watching.
+#
+sub do_watch {
+	my ($msg) = @_;
+	logger($msg);
+	# Watching loop.
+	print IN cfg("remote") . "\n";
+	notification("replication");
+	my $candidates = undef;
+	while(1) {
+		my @changes = get_changes($candidates);
+		if (@changes > $MIN_CHANGES_FOR_RSYNC) {
+			do_rsync("Detected changes in more than $MIN_CHANGES_FOR_RSYNC objects. Running rsync: it's faster.");
+		} elsif (@changes) {
+			logger("Detected " . @changes . " change(s), transmitting...");
+			notification("transfer");
+			foreach my $change (@changes) {
+				write_change(\*IN, $change);
+			}
+			notification("wait");
+		}
+		# Wait with periodical callback checking.
+		$candidates = wait_notify(sub {
+			if (!$SSH_PID || !kill(0, $SSH_PID)) {
+				die "SSH client died, restarting.\n";
+			}
+		});
+	}
+}
+
+
+#
+# Performs installation process.
+#
+sub do_install {
+	local $SIG{CHLD}; # else system() does not work
+	
+	print "Starting 5-steps interactive installation.\n\n";
+	print "THIS WIZARD IS APPEARED ONLY ONCE!\n";
+	print "NEXT TIME THE REPLICATION WILL BE STARTED IMMEDIATELY.\n\n";
+	
+	my @default_excludes = ("~*", "*.tmp", "*.pyc", ".git", "CVS", ".svn", ".cache", );
+	my @config = ();
+
+	push @config, {
+		"name"    => "local",
+		"value"   => (my $local = ask("(Step 1/6) LOCAL directory to replicate FROM:\n  ", getcwd(), sub { -d $_? undef : "No such directory: $_" })),
+		"comment" => "Local directory to be realtime-replicated.",
+	};
+	$local =~ s{\\}{/}sg;
+	$local =~ s{/+$}{}sg;
+
+	chdir($local) or die "Cannot chdir to $local: $!\n";
+	build_pathes_based_on_cwd();
+	mkpath($DIR_PRIVATE, 0, 0700);
+	mkpath($DIR_SSH, 0, 0700);
+
+	my $host = undef;
+	my $user = undef;
+	while (1) {
+		push @config, {
+			"name"    => "host",
+			"value"   => ($host = ask(
+				"(Step 2/6) REMOTE host to replicate TO:", 
+				$host, 
+				sub { /^[-\w.]+$/s? undef : "Invalid hostname!" } 
+			)),
+			"comment" => "Remote host to replicate to over SSH.",
+		};
+
+		push @config, {
+			"name"    => "user",
+			"value"   => ($user = ask(
+				"(Step 3/6) REMOTE SSH login at $host:", 
+				$user, 
+				sub { /^\S+$/s? undef : "Invalid login format!" } 
+			)),
+			"comment" => "User to connect to the remote host.",
+		};
+	
+		if (!-f $FILE_IDENTITY) {
+			my $cmd = "ssh-keygen -N \"\" -q -t rsa -b 2048 -f $FILE_IDENTITY";
+			if (system($cmd)) {
+				die "Cannot generate SSH keys. ssh-keygen: $!\n$cmd\n";
+			}
+		}
+
+		# For users who asks: should I enter my password each time?
+		ask("(Step 4/6) ONLY ONCE you will be asked for a password. Continue?", "y");
+
+		my $pub_file = "$FILE_IDENTITY.pub";
+		# system() is better than popen(), because Perl does not flush a child
+		# process'es STDERR till we read from STDIN (Win32 perl bug?).
+		print "Copying SSH key to $user\@$host. Executing:\n";
+		my $cmd = 
+			'ssh -o StrictHostKeyChecking=no ' . $user . '@' . $host . "\n" .
+			'  "cd; umask 077; test -d .ssh || mkdir .ssh; cat >> .ssh/authorized_keys"';
+		my $show = '$ ' . $cmd;
+		print "$show\n";
+		$cmd =~ s/\s*\n\s*/ /sg;
+		if (system("$cmd < $pub_file")) {
+			print STDERR "\n";
+			print STDERR "Failed connecting to $user\@$host. Please enter a correct host, login and password.\n";
+			print STDERR "\n";
+			next;
+		}
+		print "Public key $pub_file is copied to $user\@$host!\n";
+		print "\n";
+
+		last;
+	}
+	
+	push @config, {
+		"name"    => "remote",
+		"value"   => ask(
+			"(Step 5/6) REMOTE directory at $user\@$host to replicate to:", 
+			undef,
+			sub {
+				my $cmd = "ssh -i $FILE_IDENTITY -o StrictHostKeyChecking=no " . $user . '@' . $host . ' "test -d ' . $_ . '"';
+				my $ret = system($cmd) >> 8;
+				if ($ret != 0) {
+					return "Directory $_ at $user\@$host does not exist. Try again.";
+				}
+				return;
+			}
+		),
+		"comment" => "Directory at the remote host to replicate files to.",
+	};
+
+	print "\n";
+	my $excludes = ask(
+		"(Step 6/6) Exclusions from " . basename($FILE_CONFIG) . " configuration are:\n" . 
+		"  " . join(" ", @default_excludes) . "\n" .
+		"Enter a space-separated list of ADDITIONAL exclusions:",
+		""
+	);
+
+	my $first = 1;
+	foreach my $mask (@default_excludes, grep { length } split(m/[\s+,]+/s, $excludes)) {
+		push @config, {
+			"name"    => "exclude",
+			"value"   => $mask,
+			"comment" => $first? "Pathname wildcards to be excluded from the replication.\nUse \"*\" for any filename character and \"**\" for any character,\nincluding \"/\" in pathnames." : undef,
+		};
+		$first = 0;
+	}
+	
+	push @config, {
+		"name"    => "nosound",
+		"value"   => "0",
+		"comment" => "To turn off \"synchronization ding\" sound, set the following to 1.",
+	};
+	
+	push @config, {
+		"name"    => "#load",
+		"value"   => "some_file.ini",
+		"comment" => "If you need to load some other config file from here, uncomment\nand correct the following directive:",
+	};
+	
+	print "\n";
+	open(local *F, ">", $FILE_CONFIG);
+	print F "##\n";
+	print F "## dkLab RealSync configuration file.\n";
+	print F "##\n";
+	foreach my $opt (@config) {
+		my $comment = $opt->{comment};
+		if ($comment) {
+			$comment =~ s/^/# /mg;
+			print F "\n$comment\n";
+		}
+		print F $opt->{name} . " = " . $opt->{value} . "\n";
+	}
+	close(F);
+
+	print "All done. Configuration is saved to:\n";
+	print "  $FILE_CONFIG\n";
+	print "Generated SSH keys are saved to:\n";
+	print "  $DIR_SSH\n";
+	print "\n";
+	print "Press Enter start the replication. ";
+	scalar <STDIN>;
+}
+
+
+#
+# Asks a question interactively.
+# Used by installer only.
+#
+sub ask {
+	my ($msg, $default, $check) = @_;
+	while (1) {
+		print $msg . " ";
+		print "[" . (length $default? $default : "<none>") . "] " if defined $default;
+		local $_ = <STDIN>; 
+		s/^\s+|\s+$//sg;
+		if ($_ eq "") {
+			return $default if defined $default;
+			next;
+		}
+		if ($check) {
+			my $err = $check->();
+			if ($err) {
+				print "$err\n";
+				next;
+			}
+		}
+		return $_;
+	}	
+}
+
+
+#
+# Reads a config item value.
+#
+sub cfg {
+	my ($name, $nodie) = @_;
+	my $value = $CONFIG{$name};
+	if (!$nodie) {
+		if (!defined $value) {
+			die("Cannot read \"$name\" configuration option at $FILE_CONFIG!\n");
+		}
+	}
+	if ($name eq "local" || $name eq "remote") {
+		# Trailing slash is removed, but added at rsync call manually, 
+		# because it is significant for rsync.
+		$value =~ s{[/\\]+$}{}sg;
+	}
+	return $value;
+}
+
+
+#
+# Precise sleep function.
+#
+sub usleep {
+	my ($delay) = @_;
+	select(undef, undef, undef, $delay);
+}
+
+
+#
+# Pass information about background file changes monitoring.
+# This is an abstraction level for multi-thread communication.
+#
+{
+	my $NOTIFIES_SUPPORTED: shared = 0;
+	my @NOTIFIES: shared = ();
+	
+	sub notifies_set_supported {
+		my ($flag) = @_;
+		lock $NOTIFIES_SUPPORTED;
+		$NOTIFIES_SUPPORTED = !!$flag;
+	}
+
+	sub notifies_is_supported {
+		lock $NOTIFIES_SUPPORTED;
+		return $NOTIFIES_SUPPORTED;
+	}
+		
+	sub notifies_push {
+		lock @NOTIFIES;
+		push @NOTIFIES, @_;
+	}
+	
+	sub notifies_pop {
+		lock @NOTIFIES;
+		my @changes = @NOTIFIES;
+		@NOTIFIES = ();        
+		return @changes;
+	}
+}
+
+
+#
+# Calculates filesystem changes between the previous call to 
+# get_changes() and the current time.
+#
+sub get_changes {
+	my ($candidates) = @_;
+	my @changes = ();
+
+	# Build current tree.
+	my @cur_tree = ();
+	if (!$candidates || !@$candidates) {
+		make_tree(\@cur_tree, ".");
+	} else {
+		@cur_tree = @TREE;
+		$candidates = expand_dir_candidates(\@cur_tree, $candidates);
+		if ($DEBUG_PATCH_TREE) {
+			foreach (@$candidates) { print "Candidate: $_\n" } 
+		}
+		patch_tree(\@cur_tree, $candidates);
+	}
+#	foreach (@cur_tree) { print $_->{name} . "\n"; } print "\n";
+#	use Data::Dumper; print Dumper(\@cur_tree); exit;
+	
+	# Collect deleted entries.
+	my %cur_tree = map { ($_->{name} => $_) } @cur_tree;
+	for (my $i = 0; $i < @TREE; $i++) {
+		my $prev = $TREE[$i];
+		my $name = $prev->{name};
+		if (!$cur_tree{$name}) {
+			push @changes, {
+				type => "del",
+				name => $name,
+			};
+			# Skip children entries.
+			for (++$i; $i < @TREE; $i++) {
+				last if substr($TREE[$i]->{name}, 0, length($name) + 1) ne "$name/";
+			}
+			--$i;
+		}
+	}
+
+	# Collect added entries.
+	my %TREE = map { ($_->{name} => $_) } @TREE;
+	foreach my $cur (@cur_tree) {
+		my $name = $cur->{name};
+		if (!$TREE{$name} || $TREE{$name}{stamp} != $cur->{stamp} || $TREE{$name}{perm} ne $cur->{perm}) {
+			push @changes, $cur;
+		}
+	}
+
+	@TREE = @cur_tree;
+	#use Data::Dumper; print Dumper(\@changes); sleep 1; return ();
+
+	return @changes;
+}
+
+
+#
+# Reads filesystem information about $rel.
+# Returns undef if no such file/directory exists.
+#
+sub make_tree_item {
+	my ($rel) = @_;
+	my $exclude_re = cfg("exclude_re", 1);
+	return if $exclude_re && $rel ne "." && $rel =~ $exclude_re;
+	my $local = cfg("local");
+	my $fullpath = "$local/$rel";
+	my @stat = stat($fullpath);
+	return if !@stat; # hmm? but it is needed for linux mcedit
+	my $cur = {
+		path  => $fullpath,
+		name  => $rel,
+		stamp => $stat[9],
+		perm  => ($HOOKS eq 'Realsync::Win32'? "" : ($stat[2] & 0777)), # Skip perms for Windows
+	};
+	if (S_ISREG($stat[2])) {
+		$cur->{type} = "fil";
+	} elsif (S_ISDIR($stat[2])) {
+		$cur->{type} = "dir";
+	}
+	return $cur;
+}
+
+
+#
+# Makes a tree from the filesystem. You may limit recursion by $max_level: e.g. 
+# if it is 1, only $rel and its direct children (if any) are returned.
+#
+sub make_tree {
+	my ($tree, $rel, $max_level) = @_;
+	my $cur = make_tree_item($rel) or return;
+	push @$tree, $cur;
+	return if defined($max_level) && $max_level == 0;
+	if ($cur->{type} eq "dir") {
+		opendir(local *D, $cur->{path}) or die "Cannot opendir $cur->{path}: $!\n";
+		my @content = sort readdir(D); # sort is VERY important here! we use bsearch!
+		closedir(D);
+		foreach my $e (@content) {
+			next if $e eq "." || $e eq "..";
+			make_tree($tree, $cur->{name} . "/" . $e, (defined($max_level)? $max_level - 1 : undef));
+		}
+	}
+}
+
+
+#
+# Updates the current tree in memory checking statuses of enumerated 
+# candidate elements (each of them may be changed, added or removed).
+#
+sub patch_tree {
+	my ($tree, $candidates) = @_;
+	foreach my $cand (@$candidates) {
+		my $branch_start_idx = find_branch_start_in_tree($tree, $cand);
+		if (!defined($tree->[$branch_start_idx]) || $tree->[$branch_start_idx]->{name} ne $cand) {
+			# Candidate is not within the tree, add it at $branch_start_idx pos.
+			my @subtree;
+			make_tree(\@subtree, $cand);
+			splice(@$tree, $branch_start_idx, 0, @subtree);
+		} else {
+			# Candidate is within the old tree.
+			my $new_item = make_tree_item($cand);
+			if (!$new_item) {
+				# Item was deleted. Also remove its children.
+				my $branch_end_idx = find_branch_end_in_tree($tree, $cand, $branch_start_idx);
+				splice(@$tree, $branch_start_idx, $branch_end_idx - $branch_start_idx + 1);
+			} else {
+				# Item was modified. Just update the previous one.
+				splice(@$tree, $branch_start_idx, 1, $new_item);
+			}
+		}
+	}
+}
+
+
+#
+# For each directory in the candidates list expand it to all direct
+# children of this directory (existed now or existed previously).
+#
+sub expand_dir_candidates {
+	my ($tree, $candidates) = @_;
+	my %expanded = ();
+	foreach my $cand (@$candidates) {
+		my $item = make_tree_item($cand);
+		if (!$item || $item->{type} eq 'fil') {
+			$expanded{$cand} = undef;
+		} elsif ($item->{type} eq 'dir') {
+			# First, files/directories which exist directly below $cand NOW (including $cand).
+			my @existed = ();
+			make_tree(\@existed, $cand, 1);
+			@expanded{map { $_->{name} } @existed} = ();
+			# Next, add sub-files/sub-directories which exist PREVIOUSLY.
+			my @previous = ();
+			my $branch_start_idx = find_branch_start_in_tree($tree, $cand);
+			my $branch_end_idx = find_branch_end_in_tree($tree, $cand, $branch_start_idx);
+			my $item_is_child_to_cand_re = qr{^\Q$cand\E/[^/]+$}s;
+			for (my $i = $branch_start_idx + 1; $i <= $branch_end_idx; $i++) {
+				my $name = $tree->[$i]->{name};
+				$expanded{$name} = undef if $name =~ $item_is_child_to_cand_re;
+			}
+		}
+	}
+	return [sort keys %expanded];
+}
+
+
+#
+# Searches for $rel position within the tree. If nothing is found,
+# returns a position at which $rel should be inserted alphabethically.
+#
+sub find_branch_start_in_tree {
+	my ($tree, $rel) = @_;
+	my $idx = binsearch(
+		sub { $_[0] cmp $_[1]->{name} },
+		$rel,
+		$tree
+	);
+	return $idx;
+}
+
+
+#
+# Starting from $branch_start_idx position in the tree, searches for
+# the last item which is descendand of $rel (or equals to $rel).
+#
+sub find_branch_end_in_tree {
+	my ($tree, $rel, $branch_start_idx) = @_;
+	my $i;
+	for ($i = $branch_start_idx + 1; $i < @$tree; $i++) {
+		last if substr($tree->[$i]->{name}, 0, length($rel) + 1) ne "$rel/";
+	}
+	$i--;
+	return $i;
+}
+
+
+#
+# Sorted array binary search.
+# Returns the index of the position at which $s must be situated.
+#
+sub binsearch {
+   my ($f, $s, $list) = @_;
+
+   my $i = 0;
+   my $j = $#$list;
+
+   for (;;) {
+      my $k = int(($j - $i) / 2) + $i;
+      my $c = &$f($s, $list->[$k]);
+      #printf "== %s...%s k=%s  %s <=> %s = %s\n", $i, $j, $k, $s, $list->[$k], $c;
+
+      if ($c == 0) {
+         return $k;
+      } elsif ($c < 0) {
+         $j = $k - 1;
+         return $k if ($i > $j);
+      } else {
+         $i = $k + 1;
+         return $i if ($i > $j);
+      }      
+   }
+}
+
+
+#
+# Reads a configuration file.
+#
+sub read_config {
+	my ($file) = @_;
+	open(local *F, $file) or die "Cannot open $file: $!\n";
+	my %config;
+	while (<F>) {
+		s/#.*//sg;
+		s/^\s+|\s+$//sg;
+		next if !$_;
+		my ($k, $v) = ($_ =~ m/^(\w+)(?:\s*=\s*|\s+)(.*)$/s);
+		next if !$k;
+		if ($k eq "exclude") {
+			push @{$config{exclude}}, $v;
+		} elsif ($k eq "load") {
+			%config = (%config, read_config(File::Spec->rel2abs($v, dirname($file))));
+		} else {
+			$config{$k} = $v;
+		}
+	}
+	if ($config{exclude}) {
+		$config{exclude_re} = join("|", map { mask_to_re($_) } @{$config{exclude}});
+	}
+	if ($config{identity}) {
+		$FILE_IDENTITY = $config{identity};
+	}
+	return %config;
+}
+
+
+#
+# Converts filesystem wildcard into regular expression.
+#
+sub mask_to_re {
+	my ($mask) = @_;
+	my $is_basename_mask = $mask !~ m{[/\\]}s && $mask !~ m{\*\*}s;
+	$mask = "\Q$mask";
+	$mask =~ s{\\\*\\\*}{.*}sg;
+	$mask =~ s{\\\*}{[^/\\\\]*}sg;
+	if ($is_basename_mask) {
+		$mask = '(?:[/\\\\]|^)' . $mask . '(?:[/\\\\]|$)';
+	} else {
+		$mask = '^(?:\.[/\\\\])?' . $mask . '$';
+	}
+	return $mask;
+}
+
+
+#
+# Reads the script from __DATA__ section of the file.
+#
+sub get_remote_script {
+	local $/;
+	my $script = <DATA>;
+	$script =~ s/\#[^\n]+//sg;
+	$script =~ s/"(.*?)"/qq{$1}/sg;
+	$script =~ s/'(.*?)'/q{$1}/sg;
+	$script =~ s/[\r\n]+/ /sg;
+	return $script;
+}
+
+
+#
+# Runs a notification daemon.
+#
+sub spawn_notify_daemon {
+	my $cmd = $HOOKS->get_notify_daemon_cmd() or return;
+	my $local = main::cfg("local"); $local =~ s{\\}{/}sg;
+	async {
+		# Unfortunately we have to use a separate thread an shared-var 
+		# polling to listen to the watcher, because Win32 IO::Select 
+		# does not support waiting on a filehandle.
+		while (1) {
+			eval {
+				logger("Running async notification watcher (to save CPU time).\n");
+				my $pid = open(NOTIFY_FH, $cmd . "|");
+				if (!$pid) {
+					logger("Cannot run notification daemon: $!. Command was:\n  $cmd\n");
+					notifies_set_supported(0);
+					return;
+				}
+				notifies_set_supported(1);
+				binmode(NOTIFY_FH);
+				NOTIFY_FH->autoflush(1);
+				my @buf = ();
+				while (1) {
+					my $line = <NOTIFY_FH>; # locks until data is ready
+					defined $line or die "Notification daemon is terminated unexpectedly, restarting. Command was:\n  $cmd\n";
+					kill(0, $pid) or die "Notification watcher is dead, restarting. Command was:\n  $cmd\n";
+					$line =~ s/^\s+|\s+$//sg;
+					if ($line eq "-") {
+						notifies_push(@buf);
+						@buf = ();
+					} elsif ($line =~ /^\w+ (.+)/s) {
+						#print "Received: $line\n" if $DEBUG_PATCH_TREE;
+						my $path = $1; $path =~ s{\\}{/}sg;
+						my $rel = File::Spec->file_name_is_absolute($path)? File::Spec->abs2rel($path, $local) : $path;
+						print "Notify: $rel\n" if $DEBUG_PATCH_TREE;
+						$rel = "./" . $rel if substr($rel, 0, 2) ne "./" && $rel ne ".";
+						push @buf, $rel;
+					} else {
+						# Unknown response - just wake up.
+						notifies_push("");
+					}
+				}
+			};
+			logger($@) if $@;
+			close(NOTIFY_FH);
+			sleep(1);
+		}
+	}->detach();
+	# Wait a bit - possibly notification daemon will dead shortly, so we glue
+	# its mortal message with its launching message.
+	usleep(0.5);
+}
+
+
+#
+# Waits for changes within the filesystem.
+# Callback $callback is called in busy-wait manner (to monitor 
+# background processes health etc).
+# Returns undef if no changes detalization is known (we
+# know only the fact that SOMETHING was changes), else -
+# a reference to array of changed file/directory names.
+#
+sub wait_notify {
+	my ($idle_callback) = @_;
+	# Use polling if we have no watcher program for this platform.
+	if (!notifies_is_supported()) {
+		usleep($DELAY);
+		$idle_callback->();
+		return undef;
+	}
+	# Unfortunately we have to use shared-var polling, because Win32
+	# IO::Select does not support waiting on a filehandle.
+	while (1) {
+		my %changes;
+		@changes{notifies_pop()} = ();
+		if (%changes) { 
+			usleep(0.01); # changes often go one after another, glue them
+			@changes{notifies_pop()} = ();
+			my $changes = [ sort keys %changes ]; # sort is very important here!
+			return @$changes == 1 && exists($changes{""})? undef : $changes;
+		} 
+		$idle_callback->();
+		usleep(0.01);
+	}
+}
+
+
+#
+# Must not be overriden.
+# Set icon state to:
+# - rsync
+# - replication
+# - transfer
+# - wait
+#
+my $prev_wav_time = time();
+sub notification {
+	my ($type) = @_;
+	if ($type eq "rsync") {
+		$PENDING{balloon_title} = "dkLab RealSync";
+		$PENDING{balloon_tip} = "RSync of the whole directory is running...";
+		$PENDING{icon} = "flash";
+		$PENDING{reset_icon_in} = 0;
+	} elsif ($type eq "replication") {
+		$PENDING{balloon_title} = "dkLab RealSync";
+		$PENDING{balloon_tip} = "Incremental replication is running.";
+		$PENDING{icon} = "icon";
+		$PENDING{visibility} = 0 if !$DEBUG_PATCH_TREE;
+		$PENDING{reset_icon_in} = 0;
+	} elsif ($type eq "transfer") {
+		$PENDING{icon} = "flash";
+		if (!$CONFIG{nosound} && time() - ($prev_wav_time||0) > 1) {
+			$PENDING{wav} = "transfer";
+			$prev_wav_time = time();
+		}
+		$PENDING{reset_icon_in} = 0;
+	} elsif ($type eq "wait") {
+		# Delay resetting of wait status (because we cannot have no feedback about
+		# a transfer finish from the server in Win32).
+		$PENDING{reset_icon_in} = 1;
+	}
+}
+
+
+#
+# Must not be overriden.
+# Return pending events and clean them.
+# Should be used in derived classes.
+#
+sub pop_pending {
+	my (%pending) = %PENDING;
+	%PENDING = ();
+	return %pending;
+}
+
+
+
+
+##
+## Generic hooks.
+##
+package Realsync::Generic;
+
+# Convert path (e.g. Windows -> Cygwin).
+sub convert_rsync_local_path {
+	return $_[1];
+}
+
+# Initializes and correct runtime environment.
+# Should be overriden if needed.
+sub init_env {}
+
+# Initializes and correct GUI.
+# Should be overriden if needed.
+sub init_gui {}
+
+# Called at the script death.
+# Should be overriden if needed.
+sub finalize_env {}
+
+# Get notification daemon command-line.
+# If undef is returned, no notify daemon is used.
+sub get_notify_daemon_cmd {}
+
+
+
+##
+## Win32 hooks.
+##
+{{{{{
+package Realsync::Win32;
+our @ISA = 'Realsync::Generic';
+use File::Basename;
+use Time::HiRes 'time';
+use threads;
+use threads::shared;
+
+my $title;
+my $tray_ghost_wnd;
+my $tray_icon;
+my $icon;
+my $reset_icon_at;
+my $console_visible = 1;
+my $console_manually_toggled = 0;
+my %icons;
+my $perl_window;
+my $balloon_shown_at;
+
+
+sub convert_rsync_local_path {
+	my ($class, $path) = @_;
+	$path =~ s{\\}{/}sg;
+	$path =~ s{\s*(\w):}{"/cygdrive/" . lc($1)}sge;
+	$path =~ s{/+$}{}sg;
+	return $path;
+}
+
+
+sub _to_ascii_path {
+	my ($path) = @_;
+	local $ENV{PATH} = "$BINDIR\\bin\\win32";
+	my $newpath = $path;
+	$newpath =~ s{/}{\\}sg;
+	$newpath = `cygpath -a -d "$newpath"`; # the only method to call in non-ASCII path!
+	$newpath =~ s{\s+$}{}sg if $newpath;
+	die 
+		"Cannot convert to Cygwin-compatible ASCII format:\n" .
+		"  $path\n" .
+		"(Unfortunately even Cygwin 1.7.1-1 + rsync + ssh cannot work properly when\n" .
+		"PATH contains non-ASCII (national) characters. Even with LC_ALL setting.)\n"
+		if !$newpath;
+	return $newpath;
+}
+
+
+sub init_env {
+	my ($class) = @_;
+
+	# Very important to do it late!
+	$ENV{CYGWIN} = "binmode nontsec nodosfilewarning";
+
+	# Resolve non-ASCII letters from $BINDIR - in fact, even a new Cygwin
+	# rsync + ssh version cannot work with them.
+	$BINDIR = _to_ascii_path($BINDIR);
+
+	# Correct PATH to point to our utilities.
+	# dirname($ENV{COMSPEC}) is used to call system("... < file"): else it does not work!
+	my $path = "$BINDIR\\bin\\win32;" . dirname($ENV{COMSPEC});
+	my $cygpath = join ";", map { __PACKAGE__->convert_rsync_local_path($_) } split /\s*;\s*/s, $path;
+	$ENV{PATH} = $path . ";" . $cygpath;
+
+	# Build HOME directiry as ASCII-only.
+	$ENV{HOME} = _to_ascii_path($ENV{APPDATA} or die "Environment variable APPDATA must exist!\n");
+
+	# Other CYGWIN environment.
+	$ENV{TMPDIR} = $DIR_PRIVATE;
+
+	# Default Linux permissions used by mkdir and cat:
+	# dir:  rwxrwxr-x
+	# file: rw-rw-r--
+	@RSYNC_OPTIONS = grep { $_ ne "-p" } @RSYNC_OPTIONS;
+	push @RSYNC_OPTIONS, (
+		"--perms=off", "--chmod=ug=rwX,o=rX",
+	);
+}
+
+
+sub get_notify_daemon_cmd {
+	my $bin = $BINDIR . '/bin/win32/notify.exe';
+	return if !-f $bin;
+	return "\"$bin\" \"" . main::cfg("local") . "\"";
+}
+
+
+sub init_gui {
+	# Run a background GUI thread asynchronously.
+	async {
+		# Initialize the tray icon.
+		require Win32;
+		require Win32::GUI;
+		$tray_ghost_wnd = Win32::GUI::Window->new(
+			-name      => 'Window',
+			-text      => "dkLab RealSync",
+			-size      => [100, 100],
+			-minsize   => [100, 100],
+		);
+		$tray_ghost_wnd->AddTimer('Timer', 50); 
+		$perl_window = Win32::GUI::GetPerlWindow();
+		$title = "dkLab RealSync: " . main::cfg("user") . '@' . main::cfg("host") . ":" . main::cfg("remote");
+		Win32::GUI::Text($perl_window, $title);
+		Win32::GUI::Dialog();
+	}->detach();
+}
+
+
+sub main::Timer_Timer {
+	my %pending = main::pop_pending();
+	#print "- " . join(" ", map { "$_=>$pending{$_}" } keys %pending) . "\n" if %pending;
+
+	# Process hiding/showing BEFORE processing icon notifications (because icon
+	# may appear only after the window is minimized).
+	defined $pending{visibility} && !$console_manually_toggled and set_console_visibility($pending{visibility});
+
+	# Process sounds.
+	if ($pending{wav}) {
+		require Win32::API;
+		my $function = Win32::API->new(
+			'Winmm.dll', 'BOOL PlaySound(LPCSTR pszSound, HMODULE hmod, DWORD fdwSound)',
+		);
+		$function->Call("$BINDIR/bin/win32/wav/" . $pending{wav} . ".wav", 0, 0x20000 | 0x1);
+	}
+	
+	# Process icon notifications.
+	my %changes = ();
+	$pending{balloon_title} and $changes{-balloon_title} = $pending{balloon_title};
+	$pending{balloon_tip}   and $changes{-balloon_tip} = $pending{balloon_tip};
+	$pending{icon}          and $changes{-icon} = get_icon($pending{icon});
+	if (exists $pending{reset_icon_in}) {
+		$reset_icon_at = $pending{reset_icon_in}? time() + $pending{reset_icon_in} : undef;
+	}
+	if ($reset_icon_at && time() > $reset_icon_at) {
+		$changes{-icon} = get_icon("icon");
+		$reset_icon_at = undef;
+	}
+	if (%changes) {
+		$icon = ($changes{-icon} ||= get_icon($icon));
+		Win32::GUI::SetIcon($perl_window, $icon);
+		if ($tray_icon) {
+			$tray_icon->Change(
+				%changes,
+				-balloon_icon => "info",
+			);
+			if ($changes{-balloon_tip}) {
+				$tray_icon->ShowBalloon();
+				$balloon_shown_at = time();
+			} else {
+				$tray_icon->HideBalloon();
+			}
+		}
+	}
+
+	# Hide balloon manually (automatic timeout seems do not work).
+	if ($balloon_shown_at && time() - $balloon_shown_at > 3) {
+		$tray_icon->HideBalloon() if $tray_icon;
+		$balloon_shown_at = undef;
+	}
+
+	# Process minimization.
+	if (Win32::GUI::IsIconic($perl_window) && Win32::GUI::IsVisible($perl_window)) {
+		$console_manually_toggled = 1;
+		set_console_visibility(0);
+	}
+}
+
+
+sub main::NI_Click {
+	$console_manually_toggled = 1;
+	set_console_visibility() if !$console_visible;
+}
+
+
+sub finalize_env {
+ 	$tray_icon->Remove() if $tray_icon;
+	$tray_icon = undef;
+}
+
+
+sub get_icon {
+	my ($name) = @_;
+	my $f = "$BINDIR/bin/win32/icon/realsync_${name}.ico";
+	return $icons{$f} ||= new Win32::GUI::Icon($f);
+}
+
+
+sub set_console_visibility {
+	my ($visible) = @_;
+	if (!defined $visible) {
+		$visible = !$console_visible;
+	}
+	return if $console_visible == $visible;
+	if ($visible) {
+		$tray_icon->Remove() if $tray_icon;
+		$tray_icon = undef;
+		Win32::GUI::Show($perl_window);
+		Win32::GUI::SetForegroundWindow($perl_window); # the ONLY method to activate!
+	} else {
+		Win32::GUI::Hide($perl_window);
+		$tray_icon = $tray_ghost_wnd->AddNotifyIcon(
+			-name => "NI",
+			-tip => $title,
+			-icon => $icon? $icon : get_icon("icon"),
+		);
+	}
+	$console_visible = $visible;
+}
+}}}}}
+
+
+
+##
+## MaxOS X hooks.
+##
+{{{{{
+package Realsync::Darwin;
+our @ISA = 'Realsync::Generic';
+
+sub get_notify_daemon_cmd {
+	my $bin = $BINDIR . '/bin/darwin/notify';
+	return if !-f $bin;
+	die "ATTENTION! You must perform:\n  chmod +x '$bin'\nto work with RealSync. Please do it now.\n" if !-x $bin;
+	my $cmd = '"' . $bin . '" "' . main::cfg("local") . '"';
+	return $cmd;
+}
+}}}}}
+
+
+
+##
+## End of main script code. Run main() - as late as we can, because 
+## else "my" variables in sub-modules will not be initialized.
+##
+package main;
+main();
+
+
+
+##
+## Script code which is passed to remote side.
+##
+__DATA__
+use File::Path qw(rmtree);
+use File::Basename;
+use POSIX qw(locale_h strftime);
+use IO::Handle;
+
+$ENV{LANG} = $ENV{LC_ALL} = "POSIX";
+setlocale(LC_ALL, "C");
+binmode(STDIN);  STDIN->autoflush(1);
+binmode(STDOUT); STDOUT->autoflush(1);
+binmode(STDERR); STDERR->autoflush(1);
+
+my $cwd = readln();
+chdir($cwd) or die "Cannot chdir to $cwd: $!\n";
+logger("Remote directory $cwd/ is ready.");
+
+while (1) {
+	my $change = read_change('STDIN');
+	eval { apply_change($change) };
+	logger("     " . $@) if $@;
+}
+
+sub readln {
+	my $s = <STDIN>;
+	chomp($s);
+	return $s;
+}
+
+sub writeln {
+	my $fh = $_[0];
+	print $fh $_[1];
+	print $fh chr(10);
+}
+
+sub logger {
+	my ($s, $nonl, $notime) = @_;
+	$s =~ s/\s+$//sg;
+	$s =~ s/^/strftime("[%H:%M:%S] ", localtime)/meg if !$notime;
+	print $s . ($nonl? "" : "\n");
+}
+
+sub read_change {
+	my ($fh) = @_;
+	my $change = {};
+	$change->{type} = readln();
+	$change->{name} = readln();
+	$change->{perm} = readln();
+	$change->{stamp} = readln();
+	my $len = readln();
+	logger(sprintf("%.3s: ", uc($change->{type})) . $change->{name} . ($len? " ($len bytes)" : "") . " - ", 1);
+	my $data = "";
+	while (length($data) < $len) {
+		my $left = $len - length($data);
+		read($fh, $data, $left, length($data));
+	}
+	readln();
+	logger(" done", 0, 1);
+	$change->{data} = $data;
+	return $change;
+}
+
+sub write_change {
+	my ($fh, $change) = @_;
+	my $data = undef;
+	if ($change->{type} eq "fil") {
+		local $/;
+		if (!open(local *F, $change->{path})) {
+			logger("Cannot open $change->{name}: $!; skipped");
+			return;
+		}
+		binmode(F);
+		$data = <F>;
+	}
+	my $block = join("",
+		$change->{type}, "\n",
+		$change->{name}, "\n",
+		($change->{perm} || ""), "\n",
+		($change->{stamp} || 0), "\n",
+		(defined $data? length($data) : 0), "\n",
+		(defined $data? $data : ""), "\n"
+	);
+	print $fh $block or die "Cannot transmit: $!\n";
+}
+
+sub apply_change {
+	my ($change) = @_;
+	if ($change->{name} =~ m{^\s+$ | ^\s*/ | \.\.}sx) {
+		die "Invalid file name: $change->{name}\n";
+	}
+
+	# Save mtime of the parent directory: we must not modify it automatically
+	# by files creation, only by RealSync's request. Why? Because the followind
+	# commands may arrive (assume `date` = 2010-02-02):
+	#   DIR a/b         2010-01-05
+	#   FIL a/b/x.txt   2010-01-05
+	# If we do not save+restore mtime of a/b, OS will reset it to 2010-02-02
+	# just after a/b/x.txt is created. So we save it.
+	my $parent = dirname($change->{name});
+	my @stat = stat($parent);
+	
+	if ($change->{type} eq "fil") {
+		my $name = $change->{name};
+		my $tmp = $name . "." . time() . ".tmp";
+		open(local *F, ">", $tmp) or die "Cannot create $tmp: $!\n";
+		binmode(F);
+		print F $change->{data} or die "Cannot write to $tmp: $!\n";
+		close(F) or die "Cannot close $tmp: $!\n";
+		if (length($change->{perm})) {
+			chmod($change->{perm}, $tmp) or die "Cannot chmod $tmp: $!\n";
+		} else {
+			chmod((stat $name)[2], $tmp) if -e $name;
+		}
+		rename($tmp, $name) or die "Cannot rename $tmp to $name: $!\n";
+	} elsif ($change->{type} eq "dir") {
+		if (!-d $change->{name}) {
+			mkdir($change->{name}, $change->{perm}) or die "Cannot mkdir $change->{name}: $!\n";
+		}
+	} elsif ($change->{type} eq "del") {
+		if (-e $change->{name}) {
+			if (-f $change->{name}) {
+				unlink($change->{name}) or die "Cannot unlink $change->{name}: $!\n";
+			} else {
+				rmtree($change->{name}) or die "Cannot rmtree $change->{name}: $!\n";
+			}
+		}
+	} else {
+		die "Invalid change type: $change->{type}\n";
+	}
+
+	# Apply timestamp changes.
+	if ($change->{type} ne "del" && $change->{stamp}) {
+		utime($change->{stamp}, $change->{stamp}, $change->{name}) or die "$change->{type} - Cannot utime $change->{name}: $!\n";
+	}
+
+	# Restore mtime of the parent directory.
+	if (@stat) {
+		utime($stat[9], $stat[9], $parent) or die "Cannot utime parent $parent: $!\n";
+	}
+}
