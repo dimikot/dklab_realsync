@@ -361,7 +361,7 @@ sub do_install {
 		print "Copying SSH key to $user\@$host. Executing:\n";
 		my $cmd = 
 			'ssh -o StrictHostKeyChecking=no ' . $user . '@' . $host . "\n" .
-			'  "cd; umask 077; test -d .ssh || mkdir .ssh; cat >> .ssh/authorized_keys"';
+			'  "cd; umask 077; test -d .ssh || mkdir .ssh; (echo; cat) >> .ssh/authorized_keys"';
 		my $show = '$ ' . $cmd;
 		print "$show\n";
 		$cmd =~ s/\s*\n\s*/ /sg;
