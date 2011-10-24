@@ -1333,9 +1333,9 @@ sub apply_change {
 	# just after a/b/x.txt is created. So we save it.
 	my $parent = dirname($change->{name});
 	my @stat = stat($parent);
+	my $name = $change->{name};
 	
 	if ($change->{type} eq "fil") {
-		my $name = $change->{name};
 		my $tmp = $name . "." . time() . ".tmp";
 		open(local *F, ">", $tmp) or die "Cannot create $tmp: $!\n";
 		binmode(F);
@@ -1348,8 +1348,11 @@ sub apply_change {
 		}
 		rename($tmp, $name) or die "Cannot rename $tmp to $name: $!\n";
 	} elsif ($change->{type} eq "dir") {
-		if (!-d $change->{name}) {
-			mkdir($change->{name}, $change->{perm}) or die "Cannot mkdir $change->{name}: $!\n";
+		if (!-d $name) {
+			mkdir($name) or die "Cannot mkdir $name: $!\n";
+			if (length($change->{perm})) {
+				chmod($change->{perm}, $name) or die "Cannot chmod $name: $!\n";
+			}
 		}
 	} elsif ($change->{type} eq "del") {
 		if (-e $change->{name}) {
