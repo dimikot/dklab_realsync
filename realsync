@@ -330,7 +330,7 @@ sub do_install {
 			"value"   => ($host = ask(
 				"(Step 2/6) REMOTE host to replicate TO:", 
 				$host, 
-				sub { /^[-\w.]+$/s? undef : "Invalid hostname!" } 
+				sub { /^[-\w.]+$/s ? undef : "Invalid hostname!" } 
 			)),
 			"comment" => "Remote host to replicate to over SSH.",
 		};
@@ -340,7 +340,7 @@ sub do_install {
 			"value"   => ($user = ask(
 				"(Step 3/6) REMOTE SSH login at $host:", 
 				$user, 
-				sub { /^\S+$/s? undef : "Invalid login format!" } 
+				sub { /^\S+$/s ? undef : "Invalid login format!" } 
 			)),
 			"comment" => "User to connect to the remote host.",
 		};
