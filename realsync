@@ -13,10 +13,8 @@ use threads;
 use threads::shared;
 
 # Paths (will be filled later automatically).
-my $DIR_HOME = undef;                 # path to user's home directory
 my $DIR_PRIVATE = undef;              # private area directory (holds e.g. .ssh folder)
 my $FILE_CONFIG = undef;              # config file
-my $DIR_SSH = undef;                  # private .ssh folder path
 my $FILE_IDENTITY = undef;            # identity file within .ssh folder
 
 # Constants.
@@ -70,9 +68,6 @@ sub main {
 		# Initialize and (possibly) correct environment.
 		$HOOKS->init_env();
 
-		# Save proper HOME directory for later usage.
-		$DIR_HOME = $ENV{HOME} or die "Environment variable HOME must be set!\n";
-		
 		# Correct pathes.
 		build_pathes_based_on_cwd();
 
@@ -105,6 +100,11 @@ sub mainloop {
 
 	if (!-d $DIR_PRIVATE || !-f $FILE_CONFIG) {
 		do_install();
+	}
+	
+	# If we use a custom identity file, switch home dir to its directory.
+	if (-f $FILE_IDENTITY) {
+		$ENV{HOME} = $DIR_PRIVATE;
 	}
 
 	# Read configuration.
@@ -154,8 +154,9 @@ sub END {
 # Builds pathes and saves it to global variables.
 #
 sub build_pathes_based_on_cwd {
+	my $dir_appdata = ($ENV{APPDATA} || $ENV{HOME}) or die "Environment variable HOME must be set!\n";
 	# First, try to use legacy scheme.
-	build_pathes_based_on_cwd_legacy();
+	build_pathes_based_on_cwd_legacy($dir_appdata);
 	return if -f $FILE_CONFIG;
 	# Use a new scheme.
 	my $cwd = getcwd();
@@ -165,12 +166,9 @@ sub build_pathes_based_on_cwd {
 	$hash = substr($hash, -80) if length($hash) > 80;
 	$hash = substr(md5_hex($cwd), 0, 10) . "_" . $hash;
 	# Build pathes.
-	$DIR_PRIVATE   = $DIR_HOME . "/.realsync/" . $hash;
-	$DIR_SSH       = "$DIR_PRIVATE/.ssh";
-	$FILE_IDENTITY = "$DIR_SSH/identity";
+	$DIR_PRIVATE   = $dir_appdata . "/.realsync/" . $hash;
+	$FILE_IDENTITY = "$DIR_PRIVATE/.ssh/identity";
 	$FILE_CONFIG   = "$cwd/.realsync";
-	# Substitute HOME for ssh execution (it searches for .ssh within HOME).
-	$ENV{HOME}     = $DIR_PRIVATE;
 }
 
 
@@ -178,11 +176,10 @@ sub build_pathes_based_on_cwd {
 # Legacy pathes for configuration.
 #
 sub build_pathes_based_on_cwd_legacy {
-	$DIR_PRIVATE = $DIR_HOME . "/.realsync/" . substr(md5_hex(getcwd()), 0, 10);
-	$FILE_CONFIG = "$DIR_PRIVATE/realsync.ini";
-	$DIR_SSH = "$DIR_PRIVATE/.ssh";
-	$FILE_IDENTITY = "$DIR_SSH/identity";
-	$ENV{HOME} = $DIR_PRIVATE; # to save ssh keys etc.
+	my ($dir_appdata) = @_;
+	$DIR_PRIVATE   = $dir_appdata . "/.realsync/" . substr(md5_hex(getcwd()), 0, 10);
+	$FILE_CONFIG   = "$DIR_PRIVATE/realsync.ini";
+	$FILE_IDENTITY = "$DIR_PRIVATE/.ssh/identity";
 }
 
 
@@ -214,7 +211,7 @@ sub do_rsync {
 	my @rsync_cmd = (
 		@RSYNC_WRAPPER,
 		"rsync", 
-		"-e", join(" ", @RSYNC_SSH_WRAPPER, "ssh", "-i", $FILE_IDENTITY, @SSH_OPTIONS), 
+		"-e", join(" ", @RSYNC_SSH_WRAPPER, "ssh", (-f $FILE_IDENTITY? ("-i", $FILE_IDENTITY) : ()), @SSH_OPTIONS), 
 		@RSYNC_OPTIONS,
 		$HOOKS->convert_rsync_local_path(cfg("local")) . "/", # the trailing slash is significant!
 		cfg("user") . '@' . cfg("host") . ":" . cfg("remote") . "/",
@@ -250,7 +247,7 @@ sub do_run_ssh {
 	my @ssh_cmd = (
 		"ssh", 
 		($SSH_VERBOSE? ("-v") : ()), 
-		"-i", $FILE_IDENTITY,
+		(-f $FILE_IDENTITY? ("-i", $FILE_IDENTITY) : ()),
 		@SSH_OPTIONS,
 		cfg("user") . '@' . cfg("host"), 
 		"perl -we '$REM_SCRIPT' 2>&1" 
@@ -301,8 +298,16 @@ sub do_watch {
 #
 sub do_install {
 	local $SIG{CHLD}; # else system() does not work
-	
-	print "Starting 5-steps interactive installation.\n\n";
+
+	my $step_num = 1;
+	my $step_max = 6;
+	my $step_text = sub {
+		my $s = "(Step $step_num/$step_max) $_[0]";
+		$step_num++;
+		return $s;
+	};
+		
+	print "Starting $step_max-steps interactive installation.\n\n";
 	print "THIS WIZARD IS APPEARED ONLY ONCE!\n";
 	print "NEXT TIME THE REPLICATION WILL BE STARTED IMMEDIATELY.\n\n";
 	
@@ -311,7 +316,11 @@ sub do_install {
 
 	push @config, {
 		"name"    => "local",
-		"value"   => (my $local = ask("(Step 1/6) LOCAL directory to replicate FROM:\n  ", getcwd(), sub { -d $_? undef : "No such directory: $_" })),
+		"value"   => (my $local = ask(
+			$step_text->("LOCAL directory to replicate FROM:\n  "), 
+			getcwd(), 
+			sub { -d $_? undef : "No such directory: $_" }
+		)),
 		"comment" => "Local directory to be realtime-replicated.",
 	};
 	$local =~ s{\\}{/}sg;
@@ -320,15 +329,17 @@ sub do_install {
 	chdir($local) or die "Cannot chdir to $local: $!\n";
 	build_pathes_based_on_cwd();
 	mkpath($DIR_PRIVATE, 0, 0700);
-	mkpath($DIR_SSH, 0, 0700);
 
 	my $host = undef;
 	my $user = undef;
+	my $step_save = $step_num;
 	while (1) {
+		$step_num = $step_save;
+		
 		push @config, {
 			"name"    => "host",
 			"value"   => ($host = ask(
-				"(Step 2/6) REMOTE host to replicate TO:", 
+				$step_text->("REMOTE host to replicate TO:"), 
 				$host, 
 				sub { /^[-\w.]+$/s? undef : "Invalid hostname!" } 
 			)),
@@ -338,24 +349,31 @@ sub do_install {
 		push @config, {
 			"name"    => "user",
 			"value"   => ($user = ask(
-				"(Step 3/6) REMOTE SSH login at $host:", 
+				$step_text->("REMOTE SSH login at $host:"), 
 				$user, 
 				sub { /^\S+$/s? undef : "Invalid login format!" } 
 			)),
 			"comment" => "User to connect to the remote host.",
 		};
-	
+		
+		# Check if we have already passwordless access.
+		print "   checking if we have access without a password to this host...\n";
+		my $cmd = "ssh -q -o PasswordAuthentication=no -o StrictHostKeyChecking=no $user\@$host exit";
+		last if system($cmd) == 0;
+		
+		# Use a custom SSH key (create a new one if no key exists).
+		mkpath(dirname($FILE_IDENTITY), 0, 0700);
 		if (!-f $FILE_IDENTITY) {
 			my $cmd = "ssh-keygen -N \"\" -q -t rsa -b 2048 -f $FILE_IDENTITY";
 			if (system($cmd)) {
 				die "Cannot generate SSH keys. ssh-keygen: $!\n$cmd\n";
 			}
 		}
-
-		# For users who asks: should I enter my password each time?
-		ask("(Step 4/6) ONLY ONCE you will be asked for a password. Continue?", "y");
-
+		
+		# For users who ask: "should I enter my password each time?"
+		ask($step_text->("ONLY ONCE you will be asked for a password. Continue?"), "y");
 		my $pub_file = "$FILE_IDENTITY.pub";
+		
 		# system() is better than popen(), because Perl does not flush a child
 		# process'es STDERR till we read from STDIN (Win32 perl bug?).
 		print "Copying SSH key to $user\@$host. Executing:\n";
@@ -373,17 +391,18 @@ sub do_install {
 		}
 		print "Public key $pub_file is copied to $user\@$host!\n";
 		print "\n";
-
+		
 		last;
 	}
 	
 	push @config, {
 		"name"    => "remote",
 		"value"   => ask(
-			"(Step 5/6) REMOTE directory at $user\@$host to replicate to:", 
+			$step_text->("REMOTE directory at $user\@$host to replicate to:"), 
 			undef,
 			sub {
-				my $cmd = "ssh -i $FILE_IDENTITY -o StrictHostKeyChecking=no " . $user . '@' . $host . ' "test -d ' . $_ . '"';
+				print "   checking if the directory exists...\n";
+				my $cmd = "ssh " . (-f $FILE_IDENTITY? "-i $FILE_IDENTITY" : "") . " -o StrictHostKeyChecking=no " . $user . '@' . $host . ' "test -d ' . $_ . '"';
 				my $ret = system($cmd) >> 8;
 				if ($ret != 0) {
 					return "Directory $_ at $user\@$host does not exist. Try again.";
@@ -396,9 +415,11 @@ sub do_install {
 
 	print "\n";
 	my $excludes = ask(
-		"(Step 6/6) Exclusions from " . basename($FILE_CONFIG) . " configuration are:\n" . 
-		"  " . join(" ", @default_excludes) . "\n" .
-		"Enter a space-separated list of ADDITIONAL exclusions:",
+		$step_text->(
+			"Exclusions from " . basename($FILE_CONFIG) . " configuration are:\n" . 
+			"  " . join(" ", @default_excludes) . "\n" .
+			"Enter a space-separated list of ADDITIONAL exclusions:",
+		),
 		""
 	);
 
@@ -441,8 +462,10 @@ sub do_install {
 
 	print "All done. Configuration is saved to:\n";
 	print "  $FILE_CONFIG\n";
-	print "Generated SSH keys are saved to:\n";
-	print "  $DIR_SSH\n";
+	if (-f $FILE_IDENTITY) {
+		print "Generated SSH private key is saved to:\n";
+		print "  $FILE_IDENTITY\n";
+	}
 	print "\n";
 	print "Press Enter start the replication. ";
 	scalar <STDIN>;
@@ -1057,7 +1080,7 @@ sub init_env {
 	$ENV{PATH} = $path . ";" . $cygpath;
 
 	# Build HOME directiry as ASCII-only.
-	$ENV{HOME} = _to_ascii_path($ENV{APPDATA} or die "Environment variable APPDATA must exist!\n");
+	$ENV{APPDATA} = _to_ascii_path($ENV{APPDATA} or die "Environment variable APPDATA must exist!\n");
 
 	# Other CYGWIN environment.
 	$ENV{TMPDIR} = $DIR_PRIVATE;
