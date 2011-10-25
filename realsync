@@ -32,7 +32,7 @@ my @SSH_OPTIONS = (
 	"-o", "StrictHostKeyChecking=no",
 );
 my @RSYNC_OPTIONS = (
-	"-rltzv", 
+	"-rltzxv", 
 	"--delete",
 );
 my @RSYNC_WRAPPER = ();
@@ -341,7 +341,7 @@ sub do_install {
 			"value"   => ($host = ask(
 				$step_text->("REMOTE host to replicate TO:"), 
 				$host, 
-				sub { /^[-\w.]+$/s? undef : "Invalid hostname!" } 
+				sub { /^[-\w.]+$/s ? undef : "Invalid hostname!" } 
 			)),
 			"comment" => "Remote host to replicate to over SSH.",
 		};
@@ -351,7 +351,7 @@ sub do_install {
 			"value"   => ($user = ask(
 				$step_text->("REMOTE SSH login at $host:"), 
 				$user, 
-				sub { /^\S+$/s? undef : "Invalid login format!" } 
+				sub { /^\S+$/s ? undef : "Invalid login format!" } 
 			)),
 			"comment" => "User to connect to the remote host.",
 		};
