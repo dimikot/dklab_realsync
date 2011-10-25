@@ -32,7 +32,7 @@ my @SSH_OPTIONS = (
 	"-o", "StrictHostKeyChecking=no",
 );
 my @RSYNC_OPTIONS = (
-	"-rltzv", 
+	"-rltzxv", 
 	"--delete",
 );
 my @RSYNC_WRAPPER = ();
