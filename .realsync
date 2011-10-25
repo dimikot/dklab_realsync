@@ -1,0 +1,33 @@
+##
+## dkLab RealSync configuration file.
+##
+
+# Local directory to be realtime-replicated.
+local = /home/samba/dklab_realsync
+
+# Remote host to replicate to over SSH.
+host = localhost
+
+# User to connect to the remote host.
+user = dko
+
+# Directory at the remote host to replicate files to.
+remote = r
+
+# Pathname wildcards to be excluded from the replication.
+# Use "*" for any filename character and "**" for any character,
+# including "/" in pathnames.
+exclude = ~*
+exclude = *.tmp
+exclude = *.pyc
+exclude = .git
+exclude = CVS
+exclude = .svn
+exclude = .cache
+
+# To turn off "synchronization ding" sound, set the following to 1.
+nosound = 0
+
+# If you need to load some other config file from here, uncomment
+# and correct the following directive:
+#load = some_file.ini
