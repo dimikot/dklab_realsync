@@ -88,7 +88,7 @@ So you edit your site locally, but view changes at the remote web server.
 "But my Eclipse/NetBeans/PHPStorm supports SSH synchronization already!"
 ------------------------------------------------------------------------
 
-Not quite good. E.g. try to do the following:
+They typically do it not very good. E.g. try to do the following:
 
 1. Close your favorite Eclipse/NetBeans/PHPStorm temporarily.
 2. Open e.g. Notepad and change a number or files (or, better, add a 
@@ -133,7 +133,7 @@ be ready to the risk of losing your changes in non-obvious conflicts).
 
 "Wait, but I have a notebook at work and a notebook at home, so I want
 both of them to be synchronized to each other via the remote server!"
----------------------------------------------------------------------
+----------------------------------------------------------------------
 
 I suppose you don't want THIS. You really want your two notebook to be 
 synchronized to EACH OTHER. The remote server is fully independent of 
@@ -152,6 +152,24 @@ subdirectories. It will help you perfectly, plus - it will backup your
 changes on a cloud storage, so you will never lose your changes.
 When you want your two notebooks to be synchronized, Dropbox is a great 
 choise, you do not need RealSync for that.
+
+
+"But in our company we use a lot of console tools to work with the sources:
+the tools must be run at the server and has hard-coded pathes etc."
+---------------------------------------------------------------------------
+
+Oh, that's not good. Consider to change your employer. :-) That was a joke. 
+(Maybe.) So, RealSync does not fit your needs in this case. You should use
+something else, e.g. Unison.
+
+
+"I set up RSYNC invokation on Ctrl+S in my editor, and I am happy"
+------------------------------------------------------------------
+
+Congrats, you're a geek. But wait... geeks are typically seen to be working 
+at home too. Is RSYNC fast enough when your connect to your office via
+unstable internet connection with non-zero ping? I don't think so (or -
+I envy your internet quality).
 
 
 Programmers
