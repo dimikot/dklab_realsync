@@ -100,6 +100,7 @@ sub mainloop {
 	binmode(STDERR); STDERR->autoflush(1);
 
 	$SIG{CHLD} = 'IGNORE'; # later, if you use system(), reset this signal!
+	$SIG{PIPE} = 'IGNORE'; # do not kill the whole realsync if remote SSH dies
 	$SIG{INT} = $SIG{TERM} = $SIG{KILL} = sub { onexit(); exit; };
 
 	if (!-d $DIR_PRIVATE || !-f $FILE_CONFIG) {
@@ -226,6 +227,7 @@ sub do_rsync {
 		logger($msg);
 		#logger(join(" ", map { /\s|\*/s? '"' . $_ . '"' : $_ } @rsync_cmd));
 		local $SIG{CHLD}; # else system() does not work
+		local $SIG{PIPE}; # to be on a safe side
 		my $exitcode = system(@rsync_cmd);
 		if (!defined $exitcode || $exitcode < 0) {
 			logger("Failed to run rsync: $!\n");
@@ -254,7 +256,7 @@ sub do_run_ssh {
 		(-f $FILE_IDENTITY? ("-i", $FILE_IDENTITY) : ()),
 		@SSH_OPTIONS,
 		cfg("user") . '@' . cfg("host"), 
-		"perl -we '$REM_SCRIPT' 2>&1" 
+		"exec perl -we '$REM_SCRIPT' 2>&1" 
 	);
 	# Unfortunately on Win32 we cannot read from a handle returned
 	# from the first open2's argument - Perl hangs even if buffering
@@ -302,6 +304,7 @@ sub do_watch {
 #
 sub do_install {
 	local $SIG{CHLD}; # else system() does not work
+	local $SIG{PIPE}; # to be on a safe side
 
 	my $step_num = 1;
 	my $step_max = 6;
@@ -1303,6 +1306,7 @@ while (1) {
 
 sub readln {
 	my $s = <STDIN>;
+	die "STDIN closed, the remote process is finished.\n" if !defined $s;
 	chomp($s);
 	return $s;
 }
