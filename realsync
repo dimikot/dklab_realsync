@@ -618,8 +618,8 @@ sub get_changes {
 		}
 	}
 
+#	use Data::Dumper; open(local *F, ">/realsync.debug"); print F Dumper(\@TREE) . "\n\n"; print F Dumper(\@changes);
 	@TREE = @cur_tree;
-	#use Data::Dumper; print Dumper(\@changes); sleep 1; return ();
 
 	return @changes;
 }
@@ -740,7 +740,20 @@ sub expand_dir_candidates {
 sub find_branch_start_in_tree {
 	my ($tree, $rel) = @_;
 	my $idx = binsearch(
-		sub { $_[0] cmp $_[1]->{name} },
+		sub { 
+			# Make "/" to be the lowest possible priority. This is needed, because
+			# the plain "/" is greater than ".", so we have a WRONG ordering:
+			# - aaa/bbb 
+			# - aaa/bbb.ext 
+			# - aaa/bbb/ccc
+			# This is wrong, the correct order must be:
+			# - aaa/bbb 
+			# - aaa/bbb/ccc
+			# - aaa/bbb.ext 
+			my $a = $_[0];         $a =~ tr{/}{\x00};
+			my $b = $_[1]->{name}; $b =~ tr{/}{\x00};
+			return $a cmp $b;
+		},
 		$rel,
 		$tree
 	);
