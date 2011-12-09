@@ -1087,7 +1087,7 @@ sub init_env {
 	my ($class) = @_;
 
 	# Very important to do it late!
-	$ENV{CYGWIN} = "binmode nontsec nodosfilewarning";
+	$ENV{CYGWIN} = "binmode nontsec nodosfilewarning noglob";
 
 	# Resolve non-ASCII letters from $BINDIR - in fact, even a new Cygwin
 	# rsync + ssh version cannot work with them.
