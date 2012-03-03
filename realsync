@@ -213,13 +213,20 @@ sub do_replication {
 #
 sub do_rsync {
 	my ($msg) = @_;
+	my ($h_host, $h_port) = parse_host_spec(cfg("host"));
 	my @rsync_cmd = (
 		@RSYNC_WRAPPER,
 		"rsync", 
-		"-e", join(" ", @RSYNC_SSH_WRAPPER, "ssh", (-f $FILE_IDENTITY? ("-i", $FILE_IDENTITY) : ()), @SSH_OPTIONS), 
+		"-e", join(" ", 
+			@RSYNC_SSH_WRAPPER, 
+			"ssh", 
+			(-f $FILE_IDENTITY? ("-i", $FILE_IDENTITY) : ()),
+			@SSH_OPTIONS,
+			"-p$h_port"
+		), 
 		@RSYNC_OPTIONS,
 		$HOOKS->convert_rsync_local_path(cfg("local")) . "/", # the trailing slash is significant!
-		cfg("user") . '@' . cfg("host") . ":" . cfg("remote") . "/",
+		cfg("user") . '@' . $h_host . ":" . cfg("remote") . "/",
 		map { ("--exclude", $_) } @{cfg("exclude", 1)},
 	);
 	notification("rsync");
@@ -250,12 +257,14 @@ sub do_rsync {
 sub do_run_ssh {
 	my ($msg) = @_;
 	logger($msg);
+	my ($h_host, $h_port) = parse_host_spec(cfg("host"));
 	my @ssh_cmd = (
 		"ssh", 
 		($SSH_VERBOSE? ("-v") : ()), 
 		(-f $FILE_IDENTITY? ("-i", $FILE_IDENTITY) : ()),
 		@SSH_OPTIONS,
-		cfg("user") . '@' . cfg("host"), 
+		"-p$h_port",
+		cfg("user") . '@' . $h_host, 
 		"exec perl -we '$REM_SCRIPT' 2>&1" 
 	);
 	# Unfortunately on Win32 we cannot read from a handle returned
@@ -346,9 +355,9 @@ sub do_install {
 		push @config, {
 			"name"    => "host",
 			"value"   => ($host = ask(
-				$step_text->("REMOTE host to replicate TO:"), 
+				$step_text->("REMOTE host to replicate TO (host or host:port):"), 
 				$host, 
-				sub { /^[-\w.]+$/s ? undef : "Invalid hostname!" } 
+				sub { /^[-\w.]+(?::\d+)?$/s ? undef : "Invalid hostname!" } 
 			)),
 			"comment" => "Remote host to replicate to over SSH.",
 		};
@@ -365,7 +374,8 @@ sub do_install {
 		
 		# Check if we have already passwordless access.
 		print "   checking if we have access without a password to this host...\n";
-		my $cmd_check = "ssh -q -o PasswordAuthentication=no -o StrictHostKeyChecking=no $user\@$host exit";
+		my ($h_host, $h_port) = parse_host_spec($host);
+		my $cmd_check = "ssh -q -o PasswordAuthentication=no -o StrictHostKeyChecking=no -p$h_port $user\@$h_host exit";
 		last if system($cmd_check) == 0;
 		
 		# Use a custom SSH key (create a new one if no key exists).
@@ -384,9 +394,10 @@ sub do_install {
 		# system() is better than popen(), because Perl does not flush a child
 		# process'es STDERR till we read from STDIN (Win32 perl bug?).
 		print "Copying SSH key to $user\@$host. Executing:\n";
-		my $cmd = 
-			'ssh -o StrictHostKeyChecking=no ' . $user . '@' . $host . "\n" .
-			'  "cd; umask 077; test -d .ssh || mkdir .ssh; (echo; cat) >> .ssh/authorized_keys"';
+		my ($h_host, $h_port) = parse_host_spec($host);
+		my $cmd = "ssh"
+			. " -o StrictHostKeyChecking=no -p$h_port $user\@$h_host\n"
+			. ' "cd; umask 077; test -d .ssh || mkdir .ssh; (echo; cat) >> .ssh/authorized_keys"';
 		my $show = '$ ' . $cmd;
 		print "$show\n";
 		$cmd =~ s/\s*\n\s*/ /sg;
@@ -409,7 +420,10 @@ sub do_install {
 			undef,
 			sub {
 				print "   checking if the directory exists...\n";
-				my $cmd = "ssh " . (-f $FILE_IDENTITY? "-i $FILE_IDENTITY" : "") . " -o StrictHostKeyChecking=no " . $user . '@' . $host . ' "test -d ' . $_ . '"';
+				my ($h_host, $h_port) = parse_host_spec($host);
+				my $cmd = "ssh" 
+					. (-f $FILE_IDENTITY? " -i $FILE_IDENTITY" : "") 
+					. " -o StrictHostKeyChecking=no -p$h_port $user\@$h_host \"test -d $_\"";
 				my $ret = system($cmd) >> 8;
 				if ($ret != 0) {
 					return "Directory $_ at $user\@$host does not exist. Try again.";
@@ -850,6 +864,15 @@ sub mask_to_re {
 		$mask = '^(?:\.[/\\\\])?' . $mask . '$';
 	}
 	return $mask;
+}
+
+
+#
+# Returns host and port number from a host specification.
+#
+sub parse_host_spec {
+	my ($host_port) = @_;
+	return $host_port =~ /^(.*):(\d+)$/s? ($1, $2) : ($1, "22");
 }
 
 
