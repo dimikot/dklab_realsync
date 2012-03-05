@@ -23,14 +23,18 @@ int main(int argc, char* argv[]) {
     HANDLE hDir = CreateFile( 
         dir,                                // pointer to the file name
         FILE_LIST_DIRECTORY,                // access (read/write) mode
-        FILE_SHARE_READ|FILE_SHARE_DELETE,  // share mode
+        // Share mode MUST be the following to avoid problems with renames via Explorer!
+        FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE, // share mode
         NULL,                               // security descriptor
         OPEN_EXISTING,                      // how to create
         FILE_FLAG_BACKUP_SEMANTICS,         // file attributes
         NULL                                // file with attributes to copy
     );
 	if (hDir == INVALID_HANDLE_VALUE) {
-		fprintf(stderr, "ERROR: Cannot open the directory %s.\n", dir);
+        int lastError = GetLastError();
+		char error[1024];
+		FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, lastError, MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), error, sizeof(error), 0);
+		fprintf(stderr, "ERROR: Cannot open the directory \"%s\":\n%s\n", dir, error);
 		ExitProcess(GetLastError()); 
 	}
 
