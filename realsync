@@ -375,7 +375,7 @@ sub do_install {
 		# Check if we have already passwordless access.
 		print "   checking if we have access without a password to this host...\n";
 		my ($h_host, $h_port) = parse_host_spec($host);
-		my $cmd_check = "ssh -q -o PasswordAuthentication=no -o StrictHostKeyChecking=no -p$h_port $user\@$h_host exit";
+		my $cmd_check = "ssh -q -o PasswordAuthentication=no -o BatchMode=yes -o StrictHostKeyChecking=no -p$h_port $user\@$h_host exit";
 		last if system($cmd_check) == 0;
 		
 		# Use a custom SSH key (create a new one if no key exists).
