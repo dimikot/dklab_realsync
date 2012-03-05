@@ -257,6 +257,8 @@ sub do_rsync {
 sub do_run_ssh {
 	my ($msg) = @_;
 	logger($msg);
+	my $rem_script = $REM_SCRIPT;
+	$rem_script =~ s/!/@@/sg; # for tcsh
 	my ($h_host, $h_port) = parse_host_spec(cfg("host"));
 	my @ssh_cmd = (
 		"ssh", 
@@ -265,8 +267,12 @@ sub do_run_ssh {
 		@SSH_OPTIONS,
 		"-p$h_port",
 		cfg("user") . '@' . $h_host, 
-		"exec perl -we '$REM_SCRIPT' 2>&1" 
+		# For TCSH we must NEVER insert "!" character into arguments, else it
+		# breaks the program. So we previously replace "!" to "@@" and then,
+		# at the remote side, replace it back to "!", but with no "!" specification.
+		q{exec perl -we '$_=$ARGV[0]; s/@@/\x21/sg; eval($_); die $@ if $@;'} . " '$rem_script'"
 	);
+#	use Data::Dumper; print Dumper(\@ssh_cmd); exit;
 	# Unfortunately on Win32 we cannot read from a handle returned
 	# from the first open2's argument - Perl hangs even if buffering
 	# is correctly turned off. So we cannot receive a feedback from
@@ -885,7 +891,7 @@ sub get_remote_script {
 	$script =~ s/\#[^\n]+//sg;
 	$script =~ s/"(.*?)"/qq{$1}/sg;
 	$script =~ s/'(.*?)'/q{$1}/sg;
-	$script =~ s/[\r\n]+/ /sg;
+	$script =~ s/[\t\r\n]+/ /sg;
 	return $script;
 }
 
