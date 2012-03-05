@@ -872,7 +872,7 @@ sub mask_to_re {
 #
 sub parse_host_spec {
 	my ($host_port) = @_;
-	return $host_port =~ /^(.*):(\d+)$/s? ($1, $2) : ($1, "22");
+	return $host_port =~ /^(.*):(\d+)$/s? ($1, $2) : ($host_port, "22");
 }
 
 
