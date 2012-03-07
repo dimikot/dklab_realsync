@@ -1343,6 +1343,12 @@ binmode(STDOUT); STDOUT->autoflush(1);
 binmode(STDERR); STDERR->autoflush(1);
 
 my $cwd = readln();
+# getcwd() does not support tilde-based pathes, so replace them into
+# full user's home directory pathes.
+$cwd =~ s{^ ~ ([^/]*) }{ 
+	$1? ((getpwnam $1)[7] || $1)
+      : ($ENV{HOME} || $ENV{LOGDIR} || (getpwuid $>)[7] || "")
+}ex;
 chdir($cwd) or die "Cannot chdir to $cwd: $!\n";
 logger("Remote directory $cwd/ is ready.");
 
@@ -1422,7 +1428,7 @@ sub apply_change {
 	}
 
 	# Save mtime of the parent directory: we must not modify it automatically
-	# by files creation, only by RealSync's request. Why? Because the followind
+	# by files creation, only by request of RealSync. Why? Because the following
 	# commands may arrive (assume `date` = 2010-02-02):
 	#   DIR a/b         2010-01-05
 	#   FIL a/b/x.txt   2010-01-05
