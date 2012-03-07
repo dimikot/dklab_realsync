@@ -654,7 +654,11 @@ sub get_changes {
 sub make_tree_item {
 	my ($rel) = @_;
 	my $exclude_re = cfg("exclude_re", 1);
-	return if $exclude_re && $rel ne "." && $rel =~ $exclude_re;
+	# We use substr($rel, 1) below, because we need to cut leading "." 
+	# (rel pathes are ALWAYS started with ".", so we must cat to avoid its 
+	# matching with ".*" glob wildcard: e.g. "./aa/b" does match ".*" 
+	# glob wildcard, but "/aa/b" - does not.
+	return if $exclude_re && $rel ne "." && substr($rel, 1) =~ $exclude_re;
 	my $local = cfg("local");
 	my $fullpath = "$local/$rel";
 	my @stat = stat($fullpath);
