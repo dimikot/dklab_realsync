@@ -64,7 +64,10 @@ sub main {
 				
 		# If an argument is passed, chdir to that directory. Else use the current one.
 		my $chdir = $ARGV[0];
-		if (!$chdir) {
+		if (!defined $chdir && -f '.realsync') {
+			$chdir = ".";
+		}
+		if (!defined $chdir) {
 			die "Usage:\n  realsync SOURCE_DIRECTORY_WHICH_IS_REPLICATED\n";
 		}
 		chdir($chdir) or die "Cannot set current directory to $chdir: $!\n";
@@ -400,7 +403,6 @@ sub do_install {
 		# system() is better than popen(), because Perl does not flush a child
 		# process'es STDERR till we read from STDIN (Win32 perl bug?).
 		print "Copying SSH key to $user\@$host. Executing:\n";
-		my ($h_host, $h_port) = parse_host_spec($host);
 		my $cmd = "ssh"
 			. " -o StrictHostKeyChecking=no -p$h_port $user\@$h_host\n"
 			. ' "cd; umask 077; test -d .ssh || mkdir .ssh; (echo; cat) >> .ssh/authorized_keys"';
