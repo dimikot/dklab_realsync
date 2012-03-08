@@ -873,7 +873,11 @@ sub mask_to_re {
 	if ($is_basename_mask) {
 		$mask = '(?:[/\\\\]|^)' . $mask . '(?:[/\\\\]|$)';
 	} else {
-		$mask = '^(?:\.[/\\\\])?' . $mask . '$';
+		# Rel path to match with such mask is always started with "./",
+		# but before matching the first character is cut. So when we
+		# check rel path like "./aaa/bbb" to be matched by "aaa/b*" mask,
+		# we are really executing "/aaa/bbb" =~ m{^(?:[/\\\\])?aaa/b.*$}.
+		$mask = '^(?:[/\\\\])?' . $mask . '$';
 	}
 	return $mask;
 }
