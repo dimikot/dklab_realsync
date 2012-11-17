@@ -28,7 +28,7 @@ my @SSH_OPTIONS = (
 	"-o", "CompressionLevel=9",
 	"-o", "ConnectTimeout=3",
 	"-o", "ServerAliveInterval=2",
-	"-o", "ServerAliveCountMax=2",
+	"-o", "ServerAliveCountMax=4",
 	"-o", "StrictHostKeyChecking=no",
 );
 my @RSYNC_OPTIONS = (
