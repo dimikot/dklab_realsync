@@ -1,0 +1,14 @@
+This is a daemon that notifies about filesystem changes in the following form:
+
+M /path/to/changed/file
+M /path/to/other/changed/file
+-
+
+The daemon is based on kfsmd-0.3.3 and tuned a little bit to be more realtime
+The original kfsmd-0.3.3 could be found at http://sourceforge.net/projects/witme/files/kfsmd/
+The preferred way to use this daemon is to run the following:
+
+./notify watch /path/to/watch | uniq
+
+You can get rid of "| uniq", but in this case you will get multiple lines per each file
+for each type of event (e.g. OPEN/WRITE/CLOSE)

@@ -1315,7 +1315,7 @@ sub get_notify_daemon_cmd {
 	my $bin = $BINDIR . '/bin/linux/notify';
 	return if !-f $bin;
 	die "ATTENTION! You must perform:\n  chmod +x '$bin'\nto work with RealSync. Please do it now.\n" if !-x $bin;
-	my $cmd = '"' . $bin . '" watch "' . Cwd::abs_path(main::cfg("local")) . '"';
+	my $cmd = '"' . $bin . '" "' . Cwd::abs_path(main::cfg("local")) . '"';
 	return $cmd;
 }
 }}}}}
