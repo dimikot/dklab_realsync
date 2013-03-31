@@ -381,11 +381,16 @@ sub do_install {
 			"comment" => "User to connect to the remote host.",
 		};
 		
-		# Check if we have already passwordless access.
+		# Check if we already have a passwordless access.
 		print "   checking if we have access without a password to this host...\n";
 		my ($h_host, $h_port) = parse_host_spec($host);
 		my $cmd_check = "ssh -q -o PasswordAuthentication=no -o BatchMode=yes -o StrictHostKeyChecking=no -p$h_port $user\@$h_host exit";
-		last if system($cmd_check) == 0;
+		if (system($cmd_check) == 0) {
+			print "   we already have access to the host, continuing.\n";
+			last;
+		} else {
+			print "   no access, generating new SSH keys.\n";
+		}
 		
 		# Use a custom SSH key (create a new one if no key exists).
 		mkpath(dirname($FILE_IDENTITY), 0, 0700);
@@ -394,6 +399,9 @@ sub do_install {
 			if (system($cmd)) {
 				die "Cannot generate SSH keys. ssh-keygen: $!\n$cmd\n";
 			}
+			# Temporarily rename the file to avoid the case when the next
+			# pubkey copying failed and the user restarts realsync again.
+			rename($FILE_IDENTITY, "$FILE_IDENTITY.tmp");
 		}
 		
 		# For users who ask: "should I enter my password each time?"
@@ -417,6 +425,8 @@ sub do_install {
 		}
 		print "Public key $pub_file is copied to $user\@$host!\n";
 		print "\n";
+		# Successfully copied, so rename the file back.
+		rename("$FILE_IDENTITY.tmp", $FILE_IDENTITY);
 		
 		last;
 	}
