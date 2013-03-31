@@ -1,14 +1,18 @@
-This is a daemon that notifies about filesystem changes in the following form:
+The notify utility continiously prints changes in a specified directory in the following format:
 
-M /path/to/changed/file
-M /path/to/other/changed/file
+M changed/path/1
+M changed/path/2
 -
 
-The daemon is based on kfsmd-0.3.3 and tuned a little bit to be more realtime
-The original kfsmd-0.3.3 could be found at http://sourceforge.net/projects/witme/files/kfsmd/
-The preferred way to use this daemon is to run the following:
+Where M stands for "Modifed", and "-" is the indicator of end of changeset
 
-./notify watch /path/to/watch | uniq
+Utility only returns specific directories that have changed, it does not print
+the files/directories that have been modified: you need to determine them
+yourself.
 
-You can get rid of "| uniq", but in this case you will get multiple lines per each file
-for each type of event (e.g. OPEN/WRITE/CLOSE)
+Linux-specific notes:
+
+    1. You might need to adjust '/proc/sys/fs/inotify/max_user_watches' to allow more directories to be watched
+    2. If you have a lot of changes you might also want to increase queue size in /proc/sys/fs/inotify/max_queued_events
+    3. Watched queue can overflow and notify utility can run out of watched directories.
+       When you get exit code 3, you need to restart the daemon and re-process all directories you are interested in.
