@@ -848,7 +848,9 @@ sub read_config {
 	open(local *F, $file) or die "Cannot open $file: $!\n";
 	my %config;
 	while (<F>) {
-		s/#.*//sg;
+		# Comments could be at the beginning of the line only,
+		# because "#" character is valid e.g. inside a file path.
+		s/^\s*#.*//sg;
 		s/^\s+|\s+$//sg;
 		next if !$_;
 		my ($k, $v) = ($_ =~ m/^(\w+)(?:\s*=\s*|\s+)(.*)$/s);
