@@ -336,7 +336,7 @@ sub do_install {
 	print "THIS WIZARD IS APPEARED ONLY ONCE!\n";
 	print "NEXT TIME THE REPLICATION WILL BE STARTED IMMEDIATELY.\n\n";
 	
-	my @default_excludes = ("~*", "*.tmp", "*.pyc", "*.swp", ".git", "CVS", ".svn", ".realsync", ".cache", ".idea", "nbproject");
+	my @default_excludes = (".realsync", "CVS", ".git", ".svn", ".hg", ".cache", ".idea", "nbproject", "~*", "*.tmp", "*.pyc", "*.swp");
 	my @config = ();
 
 	push @config, {
