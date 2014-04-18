@@ -115,8 +115,8 @@ you to work with your favorite IDE with no lags and problems. Remote side
 is only a mirror, it doesn't have its own meaning instead of the one:
 it's an exact copy of the local side. So, if you want to work with console -
 do it at your local machine. If you use Git or other version control
-system - do it at your local machine, not at a remote one. If you need
-grep - do not use grep, use your IDE's search, it is much handy (or - use
+system - do it at your local machine, not at the remote one. If you need
+grep - do not use grep, use your IDE's search, it is much more handy (or - use
 grep at your local machine again; for Windows you may install e.g. UnxUtils
 to work approximately as comfortable as you do it in Unix). You may even have 
 no SSH access to a remote web-server you are syncing your local copy to.
@@ -127,7 +127,7 @@ the remote servers's side will be overriden by local files, even if the
 local files are older than the remote ones.
 
 This is "by design" and is not a problem. If you need a bi-directional
-synchronization, you should possible use another tool, not RealSync (and
+synchronization, you should possibly use another tool, not RealSync (and
 be ready to the risk of losing your changes in non-obvious conflicts).
 
 
