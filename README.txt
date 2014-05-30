@@ -22,15 +22,15 @@ Main RealSync benefits:
    Windows, MacOS X, Linux). If you change lots of files at once, RealSync will 
    run RSYNC automatically to reflect all changes if it thinks that a single
    RSYNC would be faster than individual files transfers.
-      
+
 3. It guarantees that no missynchronization happens, because it performs
    a full (but fast!) synchronization using the RSYNC utility when it knows
    that a missynchronization may take place (e.g. RSYNC is run when you run 
    RealSync initially).
-   
+
 4. On Windows - it minimizes to tray and dings a quiet sound on each change
    which is successfully transferred.
-   
+
 5. It has an installation wizard which automatically creates all needed SSH
    keys to access to your remote server with no need to enter your password
    each time.
@@ -38,17 +38,17 @@ Main RealSync benefits:
 So, RealSync is like RSYNC, but, in addition to RSYNC, it lives in the
 background after an initial fast synchronization and watches for all
 changes at your side.
-   
-      
+
+
 Usage for Windows
 -----------------
 
 1. Place contents of this directory somewhere, e.g.:
      "C:/Program Files/dklab_realsync/"
-   
+
 2. Create a desktop shortcut for command-line:
      "C:/Program Files/dklab_realsync/realsync.exe" SOURCE_DIRECTORY_WHICH_IS_REPLICATED
-     
+
 3. Click to that shortcut and follow interactive wizard's instructions
    (the wizard appears only first time; next time it will not bother you).
 
@@ -58,10 +58,10 @@ Usage for Linux, FreeBSD, MacOS X (darwin)
 
 1. Place contents of this directory somewhere, e.g. (or somewhere else):
      /opt/dklab_realsync/
-   
+
 2. Create a desktop shortcut for command-line:
      perl /opt/dklab_realsync/realsync SOURCE_DIRECTORY_WHICH_IS_REPLICATED
-     
+
 3. Click to that shortcut and follow interactive wizard's instructions
    (the wizard appears only first time; next time it will not bother you).
 
@@ -177,7 +177,7 @@ Programmers
 
 Dmitry Koterov
   Author & maintainer of the RealSync Perl script and "notify" tool for win32.
-  
+
 Yuri Nasretdinov
   Found, adapted (mainly rewrote) source codes and built "notify" tool 
   for Linux and MacOS.
