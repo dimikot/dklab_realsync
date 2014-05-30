@@ -4,6 +4,7 @@ use strict;
 use File::Basename;
 use File::Path qw(mkpath rmtree);
 use File::Spec;
+use Text::ParseWords;
 use IPC::Open2;
 use IO::Handle;
 use Digest::MD5 'md5_hex';
@@ -224,10 +225,10 @@ sub do_rsync {
             @RSYNC_SSH_WRAPPER,
             "ssh",
             (-f $FILE_IDENTITY? ("-i", $FILE_IDENTITY) : ()),
-            @SSH_OPTIONS,
+            split_cmd_args(cfg("ssh_options")),
             "-p$h_port"
         ),
-        @RSYNC_OPTIONS,
+        split_cmd_args(cfg("rsync_options")),
         $HOOKS->convert_rsync_local_path(cfg("local")) . "/", # the trailing slash is significant!
         cfg("user") . '@' . $h_host . ":" . cfg("remote") . "/",
         map { ("--exclude", $_) } @{cfg("exclude", 1)},
@@ -267,7 +268,7 @@ sub do_run_ssh {
         "ssh",
         ($SSH_VERBOSE? ("-v") : ()),
         (-f $FILE_IDENTITY? ("-i", $FILE_IDENTITY) : ()),
-        @SSH_OPTIONS,
+        split_cmd_args(cfg("ssh_options")),
         "-p$h_port",
         cfg("user") . '@' . $h_host,
         # For TCSH we must NEVER insert "!" character into arguments, else it
@@ -484,6 +485,18 @@ sub do_install {
         "comment" => "If you need to load some other config file from here, uncomment\nand correct the following directive:",
     };
 
+    push @config, {
+        "name"    => "#rsync_options",
+        "value"   => join(" ", @RSYNC_OPTIONS),
+        "comment" => "Options passed to RSYNC.",
+    };
+
+    push @config, {
+        "name"    => "#ssh_options",
+        "value"   => join(" ", @SSH_OPTIONS),
+        "comment" => "Options passed to SSH.",
+    };
+
     print "\n";
     open(local *F, ">", $FILE_CONFIG);
     print F "##\n";
@@ -544,6 +557,12 @@ sub ask {
 sub cfg {
     my ($name, $nodie) = @_;
     my $value = $CONFIG{$name};
+    if ($name eq "ssh_options") {
+        $value ||= join(" ", @SSH_OPTIONS);
+    }
+    if ($name eq "rsync_options") {
+        $value ||= join(" ", @RSYNC_OPTIONS);
+    }
     if (!$nodie) {
         if (!defined $value) {
             die("Cannot read \"$name\" configuration option at $FILE_CONFIG!\n");
@@ -835,6 +854,15 @@ sub binsearch {
             return $i if ($i > $j);
         }
     }
+}
+
+
+#
+# Splits command-line arguments by spaces (with correct quotes processing).
+#
+sub split_cmd_args {
+    my ($s) = @_;
+    return Text::ParseWords::shellwords($s);
 }
 
 
@@ -1157,7 +1185,6 @@ sub init_env {
     # Default Linux permissions used by mkdir and cat:
     # dir:  rwxrwxr-x
     # file: rw-rw-r--
-    @RSYNC_OPTIONS = grep { $_ ne "-p" } @RSYNC_OPTIONS;
     push @RSYNC_OPTIONS, (
         "--perms=off", "--chmod=ug=rwX,o=rX",
     );
