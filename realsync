@@ -143,7 +143,7 @@ sub onexit {
     if ($IN_REPLICATION) {
         kill(9, $SSH_PID) if $SSH_PID;
         $SSH_PID = undef;
-        notification("wait");
+        $HOOKS->notification("wait") if $HOOKS;
     }
     if (!$iteration_end) {
         $HOOKS->finalize_env() if $HOOKS;
@@ -233,7 +233,7 @@ sub do_rsync {
         cfg("user") . '@' . $h_host . ":" . cfg("remote") . "/",
         map { ("--exclude", $_) } @{cfg("exclude", 1)},
     );
-    notification("rsync");
+    $HOOKS->notification("rsync");
     while (1) {
         logger($msg);
         #logger(join(" ", map { /\s|\*/s? '"' . $_ . '"' : $_ } @rsync_cmd));
@@ -251,7 +251,7 @@ sub do_rsync {
         }
         usleep(0.5);
     }
-    notification("wait");
+    $HOOKS->notification("wait");
 }
 
 
@@ -294,7 +294,7 @@ sub do_watch {
     logger($msg);
     # Watching loop.
     print IN cfg("remote") . "\n";
-    notification("replication");
+    $HOOKS->notification("replication");
     my $candidates = undef;
     while(1) {
         my @changes = get_changes($candidates);
@@ -302,11 +302,11 @@ sub do_watch {
             do_rsync("Detected changes in more than $MIN_CHANGES_FOR_RSYNC objects. Running rsync: it's faster.");
         } elsif (@changes) {
             logger("Detected " . @changes . " change(s), transmitting...");
-            notification("transfer");
+            $HOOKS->notification("transfer");
             foreach my $change (@changes) {
                 write_change(\*IN, $change);
             }
-            notification("wait");
+            $HOOKS->notification("wait");
         }
         # Wait with periodical callback checking.
         $candidates = wait_notify(sub {
@@ -1031,58 +1031,6 @@ sub wait_notify {
     }
 }
 
-
-#
-# Must not be overriden.
-# Set icon state to:
-# - rsync
-# - replication
-# - transfer
-# - wait
-#
-my $prev_wav_time = time();
-sub notification {
-    my ($type) = @_;
-    if ($type eq "rsync") {
-        $PENDING{balloon_title} = "dkLab RealSync";
-        $PENDING{balloon_tip} = "RSync of the whole directory is running...";
-        $PENDING{icon} = "flash";
-        $PENDING{reset_icon_in} = 0;
-    } elsif ($type eq "replication") {
-        $PENDING{balloon_title} = "dkLab RealSync";
-        $PENDING{balloon_tip} = "Incremental replication is running.";
-        $PENDING{icon} = "icon";
-        $PENDING{visibility} = 0 if !$DEBUG_PATCH_TREE;
-        $PENDING{reset_icon_in} = 0;
-    } elsif ($type eq "transfer") {
-        $PENDING{icon} = "flash";
-        if (!$CONFIG{nosound} && time() - ($prev_wav_time||0) > 1) {
-            $PENDING{wav} = "transfer";
-            $prev_wav_time = time();
-        }
-        $PENDING{reset_icon_in} = 0;
-    } elsif ($type eq "wait") {
-        # Delay resetting of wait status (because we cannot have no feedback about
-        # a transfer finish from the server in Win32).
-        $PENDING{reset_icon_in} = 1;
-    }
-}
-
-
-#
-# Must not be overriden.
-# Return pending events and clean them.
-# Should be used in derived classes.
-#
-sub pop_pending {
-    my (%pending) = %PENDING;
-    %PENDING = ();
-    return %pending;
-}
-
-
-
-
 ##
 ## Generic hooks.
 ##
@@ -1132,7 +1080,52 @@ my $console_manually_toggled = 0;
 my %icons;
 my $perl_window;
 my $balloon_shown_at;
+my %PENDING: shared = ();
 
+#
+# Set icon state to:
+# - rsync
+# - replication
+# - transfer
+# - wait
+#
+my $prev_wav_time = time();
+sub notification {
+    my ($pacakge, $type) = @_;
+    if ($type eq "rsync") {
+        $PENDING{balloon_title} = "dkLab RealSync";
+        $PENDING{balloon_tip} = "RSync of the whole directory is running...";
+        $PENDING{icon} = "flash";
+        $PENDING{reset_icon_in} = 0;
+    } elsif ($type eq "replication") {
+        $PENDING{balloon_title} = "dkLab RealSync";
+        $PENDING{balloon_tip} = "Incremental replication is running.";
+        $PENDING{icon} = "icon";
+        $PENDING{visibility} = 0 if !$DEBUG_PATCH_TREE;
+        $PENDING{reset_icon_in} = 0;
+    } elsif ($type eq "transfer") {
+        $PENDING{icon} = "flash";
+        if (!$CONFIG{nosound} && time() - ($prev_wav_time||0) > 1) {
+            $PENDING{wav} = "transfer";
+            $prev_wav_time = time();
+        }
+        $PENDING{reset_icon_in} = 0;
+    } elsif ($type eq "wait") {
+        # Delay resetting of wait status (because we cannot have no feedback about
+        # a transfer finish from the server in Win32).
+        $PENDING{reset_icon_in} = 1;
+    }
+}
+
+#
+# Return pending events and clean them.
+# Should be used in derived classes.
+#
+sub pop_pending {
+    my (%pending) = %PENDING;
+    %PENDING = ();
+    return %pending;
+}
 
 sub convert_rsync_local_path {
     my ($class, $path) = @_;
@@ -1220,7 +1213,7 @@ sub init_gui {
 
 
 sub main::Timer_Timer {
-    my %pending = main::pop_pending();
+    my %pending = pop_pending();
     #print "- " . join(" ", map { "$_=>$pending{$_}" } keys %pending) . "\n" if %pending;
 
     # Process hiding/showing BEFORE processing icon notifications (because icon
@@ -1330,12 +1323,35 @@ sub set_console_visibility {
 package Realsync::Darwin;
 our @ISA = 'Realsync::Generic';
 
+# PerlObjCBridge
+use Foundation;
+
+my $notification_center = NSDistributedNotificationCenter->defaultCenter();
+my $exit_notification_sent = 0;
+
+sub init_gui {
+    `open $BINDIR/bin/darwin/RealSyncStatus.app`;
+    $notification_center->postNotificationName_object_("RealSync.notification.statusChanged", "started");
+}
+
+sub finalize_env {
+    if (!$exit_notification_sent) { 
+        $notification_center->postNotificationName_object_("RealSync.notification.statusChanged", "exit");
+        $exit_notification_sent = 1;
+    }
+}
+
 sub get_notify_daemon_cmd {
     my $bin = $BINDIR . '/bin/darwin/notify';
     return if !-f $bin;
     die "ATTENTION! You must perform:\n  chmod +x '$bin'\nto work with RealSync. Please do it now.\n" if !-x $bin;
     my $cmd = '"' . $bin . '" "' . main::cfg("local") . '"';
     return $cmd;
+}
+
+sub notification {
+    my ($pacakge, $type) = @_;
+    $notification_center->postNotificationName_object_("RealSync.notification.statusChanged", $type);
 }
 }}}}}
 
