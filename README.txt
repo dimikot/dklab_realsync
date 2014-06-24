@@ -1,4 +1,4 @@
-In this fork added status icon for Mac OS
+In this fork: added status icon for Mac OS
 
 -----------------
 

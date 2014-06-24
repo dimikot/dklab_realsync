@@ -14,7 +14,7 @@
     processesNumber = 1;
     
     // Install status item into the menu bar
-    NSStatusItem *statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:18.0];
+    NSStatusItem *statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:28.0];
     self.statusItemView = [[StatusItemView alloc] initWithStatusItem:statusItem];
     self.statusItemView.image = [NSImage imageNamed:@"Status"];
 
@@ -29,8 +29,6 @@
 - (void) onNotify:(NSNotification *)note
 {
     NSString *object = [note object];
-    NSString *name = [note name];
-    NSLog(@"<%p>%s: name: %@ object: %@", self, __PRETTY_FUNCTION__, name, object);
     
     if ([object isEqual: @"rsync"] || [object isEqual: @"transfer"]) {
         self.statusItemView.image = [NSImage imageNamed:@"StatusHighlighted"];
