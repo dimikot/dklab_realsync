@@ -1,3 +1,6 @@
+dkLab RealSync
+===
+
 dkLab RealSync: replicate developer's files over SSH in realtime
 Dmitry Koterov, http://en.dklab.ru/lib/dklab_realsync/ (C)
 License: GPL
