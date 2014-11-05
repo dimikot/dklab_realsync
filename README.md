@@ -47,9 +47,9 @@ Start by downloading RealSync as a ZIP file (then unzip it) or by cloning this r
 
 ### Linux, FreeBSD, MacOS X (darwin)
 
-1. Move the RealSync folder somewhere in your hard drive. `opt/dklab_realsync/` is a good choice.
+1. Move the RealSync folder somewhere in your hard drive. `/opt/dklab_realsync/` is a good choice.
 
-2. Create a desktop shortcut for the realsync application. You can do this by typing `perl /opt/dklab_realsync/realsync SOURCE_DIRECTORY_TO_REPLICATE` in a terminal.
+2. Create a desktop shortcut for the realsync application. Specify a command-line for this shortcut: `perl /opt/dklab_realsync/realsync SOURCE_DIRECTORY_TO_REPLICATE`
 
 3. Now open that shortcut, and follow the interactive wizard's instructions. The wizard will only show up the first time, and won't bother you after RealSync is set-up.
 
@@ -110,5 +110,4 @@ I envy your connection's quality).
 
 __Dmitry Koterov__: author & maintainer of the RealSync Perl script and the _notify_ tool for win32.
 
-__Yuri Nasretdinov__: found, adapted (mainly rewrote) the source code and built a _notify_ tool
-  for Linux and MacOS.
+__Yuri Nasretdinov__: _notify_ tool for Linux and MacOS: found, adapted (mainly rewrote) the source code for _notify_ and built it.
