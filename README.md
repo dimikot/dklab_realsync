@@ -95,7 +95,7 @@ Bit if you really want two local computers to be in sync with each other, RealSy
 
 > Luke, use Dropbox!
 
-Seriously, [Dropbox](http://dropbox.com) and it's competitors are an amazing way to keep two (or more) computers in sync. You store your local copy of the source code as a Dropbox sub-directory, and the app will keep changes across computers in sync. Plus, you get a cloud-based backup for your files so you will never lose your stuff. If two-way sync between non-remote computers is what you want, then RealSync isn't want you want.
+Seriously, [Dropbox](http://dropbox.com) and its competitors is an amazing way to keep two (or more) computers in sync. You store your local copy of the source code as a Dropbox sub-directory, and the app will keep changes across computers in sync. Plus, you get a cloud-based backup for your files so you will never lose your stuff. If two-way sync between non-remote computers is what you want, then RealSync isn't want you want.
 
 ### "But in our company we use a lot of console tools to work with the code: the tools must be run at the server, and have hard-coded paths, etc."
 
