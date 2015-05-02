@@ -1330,8 +1330,18 @@ my $notification_center = NSDistributedNotificationCenter->defaultCenter();
 my $exit_notification_sent = 0;
 
 sub init_gui {
-    `open $BINDIR/bin/darwin/RealSyncStatus.app`;
     $notification_center->postNotificationName_object_("RealSync.notification.statusChanged", "started");
+    my $windowPid = my $parentPid = getppid();
+    while (1) {
+        $parentPid = int `ps -p $parentPid -o ppid=`;
+        if ($parentPid > 1) {
+            $windowPid = $parentPid;
+        } else {
+            last;
+        }
+    }
+    $notification_center->postNotificationName_object_("RealSync.notification.windowPid", "$windowPid");
+    `open $BINDIR/bin/darwin/RealSyncStatus.app --args -terminalpid $windowPid`;
 }
 
 sub finalize_env {

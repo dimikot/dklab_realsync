@@ -1,7 +1,3 @@
-In this fork: added status icon for Mac OS
-
------------------
-
 dkLab RealSync: replicate developer's files over SSH in realtime
 Dmitry Koterov, http://en.dklab.ru/lib/dklab_realsync/ (C)
 License: GPL
