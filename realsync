@@ -1057,6 +1057,8 @@ sub finalize_env {}
 # If undef is returned, no notify daemon is used.
 sub get_notify_daemon_cmd {}
 
+# Notify UI about changed state
+sub notification {}
 
 
 ##
@@ -1323,13 +1325,14 @@ sub set_console_visibility {
 package Realsync::Darwin;
 our @ISA = 'Realsync::Generic';
 
-# PerlObjCBridge
-use Foundation;
-
-my $notification_center = NSDistributedNotificationCenter->defaultCenter();
+my $notification_center;
 my $exit_notification_sent = 0;
 
 sub init_gui {
+    # PerlObjCBridge
+    require Foundation;
+    
+    $notification_center = NSDistributedNotificationCenter->defaultCenter();
     $notification_center->postNotificationName_object_("RealSync.notification.statusChanged", "started");
     my $windowPid = my $parentPid = getppid();
     while (1) {
@@ -1345,7 +1348,7 @@ sub init_gui {
 }
 
 sub finalize_env {
-    if (!$exit_notification_sent) { 
+    if (!$exit_notification_sent) {
         $notification_center->postNotificationName_object_("RealSync.notification.statusChanged", "exit");
         $exit_notification_sent = 1;
     }
