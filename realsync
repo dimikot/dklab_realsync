@@ -414,7 +414,9 @@ sub do_install {
         print "Copying SSH key to $user\@$host. Executing:\n";
         my $cmd = "ssh"
             . " -o StrictHostKeyChecking=no -p$h_port $user\@$h_host\n"
-            . ' "cd; umask 077; test -d .ssh || mkdir .ssh; (echo; cat) >> .ssh/authorized_keys"';
+            . ' "cd; umask 077; test -d .ssh && chmod 700 .ssh || mkdir .ssh;'
+            . ' test -e .ssh/authorized_keys && chmod 600 .ssh/authorized_keys; (echo; cat)'
+            . ' >> .ssh/authorized_keys"';
         my $show = '$ ' . $cmd;
         print "$show\n";
         $cmd =~ s/\s*\n\s*/ /sg;
