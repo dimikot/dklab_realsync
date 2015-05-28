@@ -38,6 +38,8 @@ my @RSYNC_OPTIONS = (
 );
 my @RSYNC_WRAPPER = ();
 my @RSYNC_SSH_WRAPPER = ();
+my $REALSYNC_SPEC_FILE = ".realsync";
+my @DEFAULT_EXCLUDE = ($REALSYNC_SPEC_FILE, "CVS", ".git", ".svn", ".hg", ".cache", ".idea", "nbproject", "~*", "*.tmp", "*.pyc", "*.swp");
 
 # Globals.
 my %CONFIG;
@@ -65,7 +67,7 @@ sub main {
 
         # If an argument is passed, chdir to that directory. Else use the current one.
         my $chdir = $ARGV[0];
-        if (!defined $chdir && -f '.realsync') {
+        if (!defined $chdir && -f $REALSYNC_SPEC_FILE) {
             $chdir = ".";
         }
         if (!defined $chdir) {
@@ -118,6 +120,9 @@ sub mainloop {
 
     # Read configuration.
     %CONFIG = read_config($FILE_CONFIG);
+    if ($CONFIG{identity}) {
+        $FILE_IDENTITY = $CONFIG{identity};
+    }
 
     # We MUST avoid chdir: in Cygwin we have problems with non-ASCII names.
     -d cfg("local") or die "Bad local directory " . cfg("local") . ": $!\n";
@@ -131,6 +136,7 @@ sub mainloop {
         eval { do_replication() };
         logger($@) if $@;
         onexit(1);
+        sleep(1);
     }
 }
 
@@ -163,9 +169,10 @@ sub END {
 # Builds pathes and saves it to global variables.
 #
 sub build_pathes_based_on_cwd {
+    my ($is_tmp) = @_;
     my $dir_appdata = ($ENV{APPDATA} || $ENV{HOME}) or die "Environment variable HOME must be set!\n";
     # First, try to use legacy scheme.
-    build_pathes_based_on_cwd_legacy($dir_appdata);
+    build_pathes_based_on_cwd_legacy($dir_appdata, $is_tmp);
     return if -f $FILE_CONFIG;
     # Use a new scheme.
     my $cwd = getcwd();
@@ -175,9 +182,10 @@ sub build_pathes_based_on_cwd {
     $hash = substr($hash, -80) if length($hash) > 80;
     $hash = substr(md5_hex($cwd), 0, 10) . "_" . $hash;
     # Build pathes.
-    $DIR_PRIVATE   = $dir_appdata . "/.realsync/" . $hash;
+    $DIR_PRIVATE = $dir_appdata . "/$REALSYNC_SPEC_FILE/" . $hash;
+    $DIR_PRIVATE .= ".tmp" if $is_tmp;
     $FILE_IDENTITY = "$DIR_PRIVATE/.ssh/identity";
-    $FILE_CONFIG   = "$cwd/.realsync";
+    $FILE_CONFIG = "$cwd/$REALSYNC_SPEC_FILE";
 }
 
 
@@ -185,9 +193,10 @@ sub build_pathes_based_on_cwd {
 # Legacy pathes for configuration.
 #
 sub build_pathes_based_on_cwd_legacy {
-    my ($dir_appdata) = @_;
-    $DIR_PRIVATE   = $dir_appdata . "/.realsync/" . substr(md5_hex(getcwd()), 0, 10);
-    $FILE_CONFIG   = "$DIR_PRIVATE/realsync.ini";
+    my ($dir_appdata, $is_tmp) = @_;
+    $DIR_PRIVATE = $dir_appdata . "/$REALSYNC_SPEC_FILE/" . substr(md5_hex(getcwd()), 0, 10);
+    $DIR_PRIVATE .= ".tmp" if $is_tmp;
+    $FILE_CONFIG = "$DIR_PRIVATE/realsync.ini";
     $FILE_IDENTITY = "$DIR_PRIVATE/.ssh/identity";
 }
 
@@ -326,35 +335,47 @@ sub do_install {
     local $SIG{PIPE}; # to be on a safe side
 
     my $step_num = 1;
-    my $step_max = 6;
     my $step_text = sub {
-        my $s = "(Step $step_num/$step_max) $_[0]";
+        my $s = "(Step $step_num) $_[0]";
         $step_num++;
         return $s;
     };
 
-    print "Starting $step_max-steps interactive installation.\n\n";
-    print "THIS WIZARD IS APPEARED ONLY ONCE!\n";
-    print "NEXT TIME THE REPLICATION WILL BE STARTED IMMEDIATELY.\n\n";
+    print "THIS WIZARD APPEARS ONLY ONCE!\nNEXT TIME THE REPLICATION WILL START IMMEDIATELY.\n\n";
 
-    my @default_excludes = (".realsync", "CVS", ".git", ".svn", ".hg", ".cache", ".idea", "nbproject", "~*", "*.tmp", "*.pyc", "*.swp");
+    my %CONFIG = ();
+    if (-f $FILE_CONFIG) {
+        %CONFIG = read_config($FILE_CONFIG);
+        print "Read options from existing config: $FILE_CONFIG.\n";
+    } else {
+        print "Starting an interactive installation.\n";
+    }
+    print "\n";
+
     my @config = ();
 
-    push @config, {
-        "name"    => "local",
-        "value"   => (my $local = ask(
+    my $local;
+    if (!defined $CONFIG{local}) {
+        $local = ask(
             $step_text->("LOCAL directory to replicate FROM:\n  "),
             getcwd(),
             sub { -d $_? undef : "No such directory: $_" }
-        )),
-        "comment" => "Local directory to be realtime-replicated.",
-    };
-    $local =~ s{\\}{/}sg;
-    $local =~ s{/+$}{}sg;
+        );
+        $local = "." if $local eq getcwd();
+        $local =~ s{\\}{/}sg;
+        $local =~ s{/+$}{}sg;
+        push @config, {
+            "name"    => "local",
+            "value"   => $local,
+            "comment" => "Local directory to be realtime-replicated.",
+        };
+    } else {
+        $local = $CONFIG{local};
+    }
 
     chdir($local) or die "Cannot chdir to $local: $!\n";
-    build_pathes_based_on_cwd();
-    mkpath($DIR_PRIVATE, 0, 0700);
+    build_pathes_based_on_cwd(1); # builds TEMPORARY paths
+    mkpath($DIR_PRIVATE, 0, 0700); # IMPORTANT: it's a marker to skip the installation wizard next time
 
     my $host = undef;
     my $user = undef;
@@ -362,28 +383,36 @@ sub do_install {
     while (1) {
         $step_num = $step_save;
 
-        push @config, {
-            "name"    => "host",
-            "value"   => ($host = ask(
-                $step_text->("REMOTE host to replicate TO (host or host:port):"),
-                $host,
-                sub { /^[-\w.]+(?::\d+)?$/s ? undef : "Invalid hostname!" }
-            )),
-            "comment" => "Remote host to replicate to over SSH.",
-        };
+        if (!defined $CONFIG{host}) {
+            push @config, {
+                "name"    => "host",
+                "value"   => ($host = ask(
+                    $step_text->("REMOTE host to replicate TO (host or host:port):"),
+                    $host,
+                    sub { /^[-\w.]+(?::\d+)?$/s ? undef : "Invalid hostname!" }
+                )),
+                "comment" => "Remote host to replicate to over SSH.",
+            };
+        } else {
+            $host = $CONFIG{host};
+        }
 
-        push @config, {
-            "name"    => "user",
-            "value"   => ($user = ask(
-                $step_text->("REMOTE SSH login at $host:"),
-                $user,
-                sub { /^\S+$/s ? undef : "Invalid login format!" }
-            )),
-            "comment" => "User to connect to the remote host.",
-        };
+        if (!defined $CONFIG{user}) {
+            push @config, {
+                "name"    => "user",
+                "value"   => ($user = ask(
+                    $step_text->("REMOTE SSH login at $host:"),
+                    $user,
+                    sub { /^\S+$/s ? undef : "Invalid login format!" }
+                )),
+                "comment" => "User to connect to the remote host.",
+            };
+        } else {
+            $user = $CONFIG{user};
+        }
 
         # Check if we already have a passwordless access.
-        print "   checking if we have access without a password to this host...\n";
+        print "Checking if we have access to $user\@$host with no password...\n";
         my ($h_host, $h_port) = parse_host_spec($host);
         my $cmd_check = "ssh -q -o PasswordAuthentication=no -o BatchMode=yes -o StrictHostKeyChecking=no -p$h_port $user\@$h_host exit";
         if (system($cmd_check) == 0) {
@@ -434,92 +463,119 @@ sub do_install {
         last;
     }
 
-    push @config, {
-        "name"    => "remote",
-        "value"   => ask(
-            $step_text->("REMOTE directory at $user\@$host to replicate to:"),
-            undef,
-            sub {
-                print "   checking if the directory exists...\n";
-                my ($h_host, $h_port) = parse_host_spec($host);
-                my $cmd = "ssh"
-                    . (-f $FILE_IDENTITY? " -i $FILE_IDENTITY" : "")
-                    . " -o StrictHostKeyChecking=no -p$h_port $user\@$h_host \"test -d $_\"";
-                my $ret = system($cmd) >> 8;
-                if ($ret != 0) {
-                    return "Directory $_ at $user\@$host does not exist. Try again.";
-                }
-                return;
-            }
-        ),
-        "comment" => "Directory at the remote host to replicate files to.",
-    };
-
-    print "\n";
-    my $excludes = ask(
-        $step_text->(
-            "Exclusions from " . basename($FILE_CONFIG) . " configuration are:\n" .
-            "  " . join(" ", @default_excludes) . "\n" .
-            "Enter a space-separated list of ADDITIONAL exclusions:",
-        ),
-        ""
-    );
-
-    my $first = 1;
-    foreach my $mask (@default_excludes, grep { length } split(m/[\s+,]+/s, $excludes)) {
+    if (!defined $CONFIG{remote}) {
         push @config, {
-            "name"    => "exclude",
-            "value"   => $mask,
-            "comment" => $first? "Pathname wildcards to be excluded from the replication.\nUse \"*\" for any filename character and \"**\" for any character,\nincluding \"/\" in pathnames." : undef,
+            "name"    => "remote",
+            "value"   => ask(
+                $step_text->("REMOTE directory at $user\@$host to replicate to:"),
+                undef,
+                sub {
+                    print "   checking if the directory exists...\n";
+                    my ($h_host, $h_port) = parse_host_spec($host);
+                    my $cmd = "ssh"
+                        . (-f $FILE_IDENTITY? " -i $FILE_IDENTITY" : "")
+                        . " -o StrictHostKeyChecking=no -p$h_port $user\@$h_host \"test -d $_\"";
+                    my $ret = system($cmd) >> 8;
+                    if ($ret != 0) {
+                        return "Directory $_ at $user\@$host does not exist. Try again.";
+                    }
+                    return;
+                }
+            ),
+            "comment" => "Directory at the remote host to replicate files to.",
         };
-        $first = 0;
+    } else {
+        # Pass.
     }
 
-    push @config, {
-        "name"    => "nosound",
-        "value"   => "0",
-        "comment" => "To turn off \"synchronization ding\" sound, set the following to 1.",
-    };
+    if (!defined $CONFIG{exclude}) {
+        print "\n";
+        my $excludes = ask(
+            $step_text->(
+                "Exclusions from " . basename($FILE_CONFIG) . " configuration are:\n" .
+                "  " . join(" ", @DEFAULT_EXCLUDE) . "\n" .
+                "Enter a space-separated list of ADDITIONAL exclusions:",
+            ),
+            ""
+        );
+        my $first = 1;
+        foreach my $mask (@DEFAULT_EXCLUDE, grep { length } split(m/[\s+,]+/s, $excludes)) {
+            push @config, {
+                "name"    => "exclude",
+                "value"   => $mask,
+                "comment" => $first? "Pathname wildcards to be excluded from the replication.\nUse \"*\" for any filename character and \"**\" for any character,\nincluding \"/\" in pathnames." : undef,
+            };
+            $first = 0;
+        }
+    } else {
+        # Pass.
+    }
 
-    push @config, {
-        "name"    => "#load",
-        "value"   => "some_file.ini",
-        "comment" => "If you need to load some other config file from here, uncomment\nand correct the following directive:",
-    };
+    if (!defined $CONFIG{nosound}) {
+        push @config, {
+            "name"    => "nosound",
+            "value"   => "0",
+            "comment" => "To turn off \"synchronization ding\" sound, set the following to 1.",
+        };
+    }
 
-    push @config, {
-        "name"    => "#rsync_options",
-        "value"   => join(" ", @RSYNC_OPTIONS),
-        "comment" => "Options passed to RSYNC.",
-    };
+    if (!%CONFIG) {
+        unshift @config, {
+            "name"    => "#load",
+            "value"   => "$REALSYNC_SPEC_FILE-local",
+            "comment" => "You may load some other config files. It's a good practice to put\n"
+                       . "all user-specific options (e.g. \"user\" directive, see below) to\n"
+                       . "$REALSYNC_SPEC_FILE-local plus add this file to .gitignore. After that\n"
+                       . "you commit the current $REALSYNC_SPEC_FILE file to your version control\n"
+                       . "system, so developers may just override options in their own local files."
+        };
 
-    push @config, {
-        "name"    => "#ssh_options",
-        "value"   => join(" ", @SSH_OPTIONS),
-        "comment" => "Options passed to SSH.",
-    };
+        push @config, {
+            "name"    => "#rsync_options",
+            "value"   => join(" ", @RSYNC_OPTIONS),
+            "comment" => "Options passed to RSYNC.",
+        };
+
+        push @config, {
+            "name"    => "#ssh_options",
+            "value"   => join(" ", @SSH_OPTIONS),
+            "comment" => "Options passed to SSH.",
+        };
+    }
 
     print "\n";
-    open(local *F, ">", $FILE_CONFIG);
-    print F "##\n";
-    print F "## dkLab RealSync configuration file.\n";
-    print F "##\n";
-    foreach my $opt (@config) {
-        my $comment = $opt->{comment};
-        if ($comment) {
-            $comment =~ s/^/# /mg;
-            print F "\n$comment\n";
-        }
-        print F $opt->{name} . " = " . $opt->{value} . "\n";
-    }
-    close(F);
 
-    print "All done. Configuration is saved to:\n";
-    print "  $FILE_CONFIG\n";
+    if (@config) {
+        open(local *F, ">>", $FILE_CONFIG);
+        if (!%CONFIG) {
+            print F "##\n";
+            print F "## dkLab RealSync configuration file.\n";
+            print F "##\n";
+        }
+        foreach my $opt (@config) {
+            my $comment = $opt->{comment};
+            if ($comment) {
+                $comment =~ s/^/# /mg;
+                print F "\n$comment\n";
+            }
+            print F $opt->{name} . " = " . $opt->{value} . "\n";
+        }
+        close(F);
+        print "All done. The configuration file has been updated.\n";
+    }
+
+    print "Configuration file is:\n  $FILE_CONFIG\n";
     if (-f $FILE_IDENTITY) {
         print "Generated SSH private key is saved to:\n";
         print "  $FILE_IDENTITY\n";
     }
+
+    # Flip tmp keys directory into the permanent one at the very end, so if
+    # one presses Ctrl+C above and relaunches, everything is started from scratch.
+    my ($tmp_dir_private) = ($DIR_PRIVATE);
+    build_pathes_based_on_cwd();
+    rename($tmp_dir_private, $DIR_PRIVATE);
+
     print "\n";
     print "Press Enter start the replication. ";
     scalar <STDIN>;
@@ -893,9 +949,6 @@ sub read_config {
     }
     if ($config{exclude}) {
         $config{exclude_re} = join("|", map { mask_to_re($_) } @{$config{exclude}});
-    }
-    if ($config{identity}) {
-        $FILE_IDENTITY = $config{identity};
     }
     return %config;
 }
