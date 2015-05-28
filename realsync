@@ -511,6 +511,14 @@ sub do_install {
         # Pass.
     }
 
+    if (!%CONFIG) {
+        push @config, {
+            "name"    => "#exclude_file",
+            "value"   => ".gitignore",
+            "comment" => "You may read exclusion list from e.g. a .gitignore file.",
+        };
+    }
+
     if (!defined $CONFIG{nosound}) {
         push @config, {
             "name"    => "nosound",
@@ -941,6 +949,8 @@ sub read_config {
         next if !$k;
         if ($k eq "exclude") {
             push @{$config{exclude}}, $v;
+        } elsif ($k eq "exclude_file") {
+            push @{$config{exclude}}, read_exclude_file($v);
         } elsif ($k eq "load") {
             %config = (%config, read_config(File::Spec->rel2abs($v, dirname($file))));
         } else {
@@ -951,6 +961,24 @@ sub read_config {
         $config{exclude_re} = join("|", map { mask_to_re($_) } @{$config{exclude}});
     }
     return %config;
+}
+
+
+#
+# Reads a content of .gitignore-like file.
+#
+sub read_exclude_file {
+    my ($file) = @_;
+    my @excludes = ();
+    open(local *F, $file) or die "Cannot open an exclude file $file: $!\n";
+    while (<F>) {
+        # Comments could be at the beginning of the line only,
+        # because "#" character is valid e.g. inside a file path.
+        s/^\s*#.*//sg;
+        s/^\s+|\s+$//sg;
+        push @excludes, $_ if length($_);
+    }
+    return @excludes;
 }
 
 
