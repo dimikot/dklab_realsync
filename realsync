@@ -233,7 +233,7 @@ sub do_rsync {
         "-e", join(" ",
             @RSYNC_SSH_WRAPPER,
             "ssh",
-            (-f $FILE_IDENTITY? ("-i", $FILE_IDENTITY) : ()),
+            (-f $FILE_IDENTITY ? ("-i", $FILE_IDENTITY) : ()),
             split_cmd_args(cfg("ssh_options")),
             "-p$h_port"
         ),
@@ -245,7 +245,7 @@ sub do_rsync {
     notification("rsync");
     while (1) {
         logger($msg);
-        #logger(join(" ", map { /\s|\*/s? '"' . $_ . '"' : $_ } @rsync_cmd));
+        #logger(join(" ", map { /\s|\*/s ? '"' . $_ . '"' : $_ } @rsync_cmd));
         local $SIG{CHLD}; # else system() does not work
         local $SIG{PIPE}; # to be on a safe side
         my $exitcode = system(@rsync_cmd);
@@ -275,8 +275,8 @@ sub do_run_ssh {
     my ($h_host, $h_port) = parse_host_spec(cfg("host"));
     my @ssh_cmd = (
         "ssh",
-        ($SSH_VERBOSE? ("-v") : ()),
-        (-f $FILE_IDENTITY? ("-i", $FILE_IDENTITY) : ()),
+        ($SSH_VERBOSE ? ("-v") : ()),
+        (-f $FILE_IDENTITY ? ("-i", $FILE_IDENTITY) : ()),
         split_cmd_args(cfg("ssh_options")),
         "-p$h_port",
         cfg("user") . '@' . $h_host,
@@ -305,7 +305,7 @@ sub do_watch {
     print IN cfg("remote") . "\n";
     notification("replication");
     my $candidates = undef;
-    while(1) {
+    while (1) {
         my @changes = get_changes($candidates);
         if (@changes > $MIN_CHANGES_FOR_RSYNC) {
             do_rsync("Detected changes in more than $MIN_CHANGES_FOR_RSYNC objects. Running rsync: it's faster.");
@@ -359,7 +359,7 @@ sub do_install {
         $local = ask(
             $step_text->("LOCAL directory to replicate FROM:\n  "),
             getcwd(),
-            sub { -d $_? undef : "No such directory: $_" }
+            sub { -d $_ ? undef : "No such directory: $_" }
         );
         $local = "." if $local eq getcwd();
         $local =~ s{\\}{/}sg;
@@ -473,7 +473,7 @@ sub do_install {
                     print "   checking if the directory exists...\n";
                     my ($h_host, $h_port) = parse_host_spec($host);
                     my $cmd = "ssh"
-                        . (-f $FILE_IDENTITY? " -i $FILE_IDENTITY" : "")
+                        . (-f $FILE_IDENTITY ? " -i $FILE_IDENTITY" : "")
                         . " -o StrictHostKeyChecking=no -p$h_port $user\@$h_host \"test -d $_\"";
                     my $ret = system($cmd) >> 8;
                     if ($ret != 0) {
@@ -503,7 +503,7 @@ sub do_install {
             push @config, {
                 "name"    => "exclude",
                 "value"   => $mask,
-                "comment" => $first? "Pathname wildcards to be excluded from the replication.\nUse \"*\" for any filename character and \"**\" for any character,\nincluding \"/\" in pathnames." : undef,
+                "comment" => $first ? "Pathname wildcards to be excluded from the replication.\nUse \"*\" for any filename character and \"**\" for any character,\nincluding \"/\" in pathnames." : undef,
             };
             $first = 0;
         }
@@ -598,7 +598,7 @@ sub ask {
     my ($msg, $default, $check) = @_;
     while (1) {
         print $msg . " ";
-        print "[" . (length $default? $default : "<none>") . "] " if defined $default;
+        print "[" . (length $default ? $default : "<none>") . "] " if defined $default;
         local $_ = <STDIN>;
         s/^\s+|\s+$//sg;
         if ($_ eq "") {
@@ -762,7 +762,7 @@ sub make_tree_item {
         path  => $fullpath,
         name  => $rel,
         stamp => $stat[9],
-        perm  => ($HOOKS eq 'Realsync::Win32'? "" : ($stat[2] & 0777)), # Skip perms for Windows
+        perm  => ($HOOKS eq 'Realsync::Win32' ? "" : ($stat[2] & 0777)), # Skip perms for Windows
     };
     if (S_ISREG($stat[2])) {
         $cur->{type} = "fil";
@@ -788,7 +788,7 @@ sub make_tree {
         closedir(D);
         foreach my $e (@content) {
             next if $e eq "." || $e eq "..";
-            make_tree($tree, $cur->{name} . "/" . $e, (defined($max_level)? $max_level - 1 : undef));
+            make_tree($tree, $cur->{name} . "/" . $e, (defined($max_level) ? $max_level - 1 : undef));
         }
     }
 }
@@ -1009,7 +1009,7 @@ sub mask_to_re {
 #
 sub parse_host_spec {
     my ($host_port) = @_;
-    return $host_port =~ /^(.*):(\d+)$/s? ($1, $2) : ($host_port, "22");
+    return $host_port =~ /^(.*):(\d+)$/s ? ($1, $2) : ($host_port, "22");
 }
 
 
@@ -1034,7 +1034,7 @@ sub spawn_notify_daemon {
     my $cmd = $HOOKS->get_notify_daemon_cmd() or return;
     my $local = main::cfg("local"); $local =~ s{\\}{/}sg;
     async {
-        # Unfortunately we have to use a separate thread an shared-var
+        # Unfortunately we have to use a separate thread and shared-var
         # polling to listen to the watcher, because Win32 IO::Select
         # does not support waiting on a filehandle.
         while (1) {
@@ -1061,7 +1061,7 @@ sub spawn_notify_daemon {
                     } elsif ($line =~ /^\w+ (.+)/s) {
                         #print "Received: $line\n" if $DEBUG_PATCH_TREE;
                         my $path = $1; $path =~ s{\\}{/}sg;
-                        my $rel = File::Spec->file_name_is_absolute($path)? File::Spec->abs2rel($path, $local) : $path;
+                        my $rel = File::Spec->file_name_is_absolute($path) ? File::Spec->abs2rel($path, $local) : $path;
                         print "Notify: $rel\n" if $DEBUG_PATCH_TREE;
                         $rel = "./" . $rel if substr($rel, 0, 2) ne "./" && $rel ne ".";
                         push @buf, $rel;
@@ -1107,7 +1107,7 @@ sub wait_notify {
             usleep(0.01); # changes often go one after another, glue them
             @changes{notifies_pop()} = ();
             my $changes = [ sort keys %changes ]; # sort is very important here!
-            return @$changes == 1 && exists($changes{""})? undef : $changes;
+            return @$changes == 1 && exists($changes{""}) ? undef : $changes;
         }
         $idle_callback->();
         usleep(0.01);
@@ -1325,7 +1325,7 @@ sub main::Timer_Timer {
     $pending{balloon_tip}   and $changes{-balloon_tip} = $pending{balloon_tip};
     $pending{icon}          and $changes{-icon} = get_icon($pending{icon});
     if (exists $pending{reset_icon_in}) {
-        $reset_icon_at = $pending{reset_icon_in}? time() + $pending{reset_icon_in} : undef;
+        $reset_icon_at = $pending{reset_icon_in} ? time() + $pending{reset_icon_in} : undef;
     }
     if ($reset_icon_at && time() > $reset_icon_at) {
         $changes{-icon} = get_icon("icon");
@@ -1397,7 +1397,7 @@ sub set_console_visibility {
         $tray_icon = $tray_ghost_wnd->AddNotifyIcon(
             -name => "NI",
             -tip => $title,
-            -icon => $icon? $icon : get_icon("icon"),
+            -icon => $icon ? $icon : get_icon("icon"),
         );
     }
     $console_visible = $visible;
@@ -1499,7 +1499,7 @@ sub logger {
     my ($s, $nonl, $notime) = @_;
     $s =~ s/\s+$//sg;
     $s =~ s/^/strftime("[%H:%M:%S] ", localtime)/meg if !$notime;
-    print $s . ($nonl? "" : "\n");
+    print $s . ($nonl ? "" : "\n");
 }
 
 sub read_change {
@@ -1510,7 +1510,7 @@ sub read_change {
     $change->{perm} = readln();
     $change->{stamp} = readln();
     my $len = readln();
-    logger(sprintf("%.3s: ", uc($change->{type})) . $change->{name} . ($len? " ($len bytes)" : "") . " - ", 1);
+    logger(sprintf("%.3s: ", uc($change->{type})) . $change->{name} . ($len ? " ($len bytes)" : "") . " - ", 1);
     my $data = "";
     while (length($data) < $len) {
         my $left = $len - length($data);
@@ -1539,8 +1539,8 @@ sub write_change {
         $change->{name}, "\n",
         ($change->{perm} || ""), "\n",
         ($change->{stamp} || 0), "\n",
-        (defined $data? length($data) : 0), "\n",
-        (defined $data? $data : ""), "\n"
+        (defined $data ? length($data) : 0), "\n",
+        (defined $data ? $data : ""), "\n"
     );
     print $fh $block or die "Cannot transmit: $!\n";
 }
