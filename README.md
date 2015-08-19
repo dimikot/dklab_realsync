@@ -43,7 +43,7 @@ Start by downloading RealSync as a ZIP file (then unzip it) or by cloning this r
 
   `C:\Program Files\dklab_realsync\realsync.exe C:\code`
 
-4. Now double click the shortcut, and follow the instructions on the wizard to set up your synchronization. The wizard will only show up the first time, and won't bother you when you open RealSync after being set-up.
+4. Now double click the shortcut, and follow the instructions on the wizard to set up your synchronization. The wizard will only show up the first time, and won't bother you when you open RealSync after being set-up. You can always update the settings manually by modifying the .realsync file in the source directory.
 
 ### Linux, FreeBSD, MacOS X (darwin)
 

@@ -50,7 +50,8 @@ Usage for Windows
      "C:/Program Files/dklab_realsync/realsync.exe" SOURCE_DIRECTORY_WHICH_IS_REPLICATED
 
 3. Click to that shortcut and follow interactive wizard's instructions
-   (the wizard appears only first time; next time it will not bother you).
+   (the wizard appears only first time; next time it will not bother you)
+   Settings are located in the .realsync file in the source directory.
 
 
 Usage for Linux, FreeBSD, MacOS X (darwin)
