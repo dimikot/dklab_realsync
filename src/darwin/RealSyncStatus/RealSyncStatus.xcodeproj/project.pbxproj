@@ -1,0 +1,347 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0A14CD051AF51C1D003CACC7 /* Status@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 0A14CD031AF51C1D003CACC7 /* Status@2x.png */; };
+		0A14CD061AF51C1D003CACC7 /* StatusHighlighted@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 0A14CD041AF51C1D003CACC7 /* StatusHighlighted@2x.png */; };
+		0A8B93B21944910900159770 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0A8B93B11944910900159770 /* Cocoa.framework */; };
+		0A8B93BC1944910900159770 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 0A8B93BA1944910900159770 /* InfoPlist.strings */; };
+		0A8B93BE1944910900159770 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 0A8B93BD1944910900159770 /* main.m */; };
+		0A8B93C51944910900159770 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 0A8B93C41944910900159770 /* AppDelegate.m */; };
+		0A8B93C81944910900159770 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = 0A8B93C61944910900159770 /* MainMenu.xib */; };
+		0A8B93CA1944910900159770 /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0A8B93C91944910900159770 /* Images.xcassets */; };
+		0A8B93E71944922500159770 /* StatusItemView.m in Sources */ = {isa = PBXBuildFile; fileRef = 0A8B93E61944922500159770 /* StatusItemView.m */; };
+		0AC96E3F194DFF59002AAD7C /* Status.png in Resources */ = {isa = PBXBuildFile; fileRef = 0AC96E3D194DFF59002AAD7C /* Status.png */; };
+		0AC96E40194DFF59002AAD7C /* StatusHighlighted.png in Resources */ = {isa = PBXBuildFile; fileRef = 0AC96E3E194DFF59002AAD7C /* StatusHighlighted.png */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0A14CD031AF51C1D003CACC7 /* Status@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Status@2x.png"; sourceTree = "<group>"; };
+		0A14CD041AF51C1D003CACC7 /* StatusHighlighted@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "StatusHighlighted@2x.png"; sourceTree = "<group>"; };
+		0A8B93AE1944910900159770 /* RealSyncStatus.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RealSyncStatus.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		0A8B93B11944910900159770 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
+		0A8B93B41944910900159770 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
+		0A8B93B51944910900159770 /* CoreData.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreData.framework; path = System/Library/Frameworks/CoreData.framework; sourceTree = SDKROOT; };
+		0A8B93B61944910900159770 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+		0A8B93B91944910900159770 /* RealSyncStatus-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "RealSyncStatus-Info.plist"; sourceTree = "<group>"; };
+		0A8B93BB1944910900159770 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		0A8B93BD1944910900159770 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		0A8B93BF1944910900159770 /* RealSyncStatus-Prefix.pch */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "RealSyncStatus-Prefix.pch"; sourceTree = "<group>"; };
+		0A8B93C31944910900159770 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
+		0A8B93C41944910900159770 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
+		0A8B93C71944910900159770 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/MainMenu.xib; sourceTree = "<group>"; };
+		0A8B93C91944910900159770 /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Images.xcassets; sourceTree = "<group>"; };
+		0A8B93E51944922500159770 /* StatusItemView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StatusItemView.h; sourceTree = "<group>"; };
+		0A8B93E61944922500159770 /* StatusItemView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = StatusItemView.m; sourceTree = "<group>"; };
+		0AC96E3D194DFF59002AAD7C /* Status.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Status.png; sourceTree = "<group>"; };
+		0AC96E3E194DFF59002AAD7C /* StatusHighlighted.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = StatusHighlighted.png; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		0A8B93AB1944910900159770 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0A8B93B21944910900159770 /* Cocoa.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0A8B93A51944910900159770 = {
+			isa = PBXGroup;
+			children = (
+				0A8B93B71944910900159770 /* RealSyncStatus */,
+				0A8B93B01944910900159770 /* Frameworks */,
+				0A8B93AF1944910900159770 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		0A8B93AF1944910900159770 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				0A8B93AE1944910900159770 /* RealSyncStatus.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		0A8B93B01944910900159770 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				0A8B93B11944910900159770 /* Cocoa.framework */,
+				0A8B93B31944910900159770 /* Other Frameworks */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		0A8B93B31944910900159770 /* Other Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				0A8B93B41944910900159770 /* AppKit.framework */,
+				0A8B93B51944910900159770 /* CoreData.framework */,
+				0A8B93B61944910900159770 /* Foundation.framework */,
+			);
+			name = "Other Frameworks";
+			sourceTree = "<group>";
+		};
+		0A8B93B71944910900159770 /* RealSyncStatus */ = {
+			isa = PBXGroup;
+			children = (
+				0AC96E41194E0D37002AAD7C /* Icons */,
+				0A8B93E51944922500159770 /* StatusItemView.h */,
+				0A8B93E61944922500159770 /* StatusItemView.m */,
+				0A8B93C31944910900159770 /* AppDelegate.h */,
+				0A8B93C41944910900159770 /* AppDelegate.m */,
+				0A8B93C61944910900159770 /* MainMenu.xib */,
+				0A8B93C91944910900159770 /* Images.xcassets */,
+				0A8B93B81944910900159770 /* Supporting Files */,
+			);
+			path = RealSyncStatus;
+			sourceTree = "<group>";
+		};
+		0A8B93B81944910900159770 /* Supporting Files */ = {
+			isa = PBXGroup;
+			children = (
+				0A8B93B91944910900159770 /* RealSyncStatus-Info.plist */,
+				0A8B93BA1944910900159770 /* InfoPlist.strings */,
+				0A8B93BD1944910900159770 /* main.m */,
+				0A8B93BF1944910900159770 /* RealSyncStatus-Prefix.pch */,
+			);
+			name = "Supporting Files";
+			sourceTree = "<group>";
+		};
+		0AC96E41194E0D37002AAD7C /* Icons */ = {
+			isa = PBXGroup;
+			children = (
+				0AC96E3D194DFF59002AAD7C /* Status.png */,
+				0A14CD031AF51C1D003CACC7 /* Status@2x.png */,
+				0AC96E3E194DFF59002AAD7C /* StatusHighlighted.png */,
+				0A14CD041AF51C1D003CACC7 /* StatusHighlighted@2x.png */,
+			);
+			name = Icons;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0A8B93AD1944910900159770 /* RealSyncStatus */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0A8B93DF1944910900159770 /* Build configuration list for PBXNativeTarget "RealSyncStatus" */;
+			buildPhases = (
+				0A8B93AA1944910900159770 /* Sources */,
+				0A8B93AB1944910900159770 /* Frameworks */,
+				0A8B93AC1944910900159770 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RealSyncStatus;
+			productName = RealSyncStatus;
+			productReference = 0A8B93AE1944910900159770 /* RealSyncStatus.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0A8B93A61944910900159770 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 0510;
+				ORGANIZATIONNAME = "Dmitry Krivomazov";
+			};
+			buildConfigurationList = 0A8B93A91944910900159770 /* Build configuration list for PBXProject "RealSyncStatus" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = English;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 0A8B93A51944910900159770;
+			productRefGroup = 0A8B93AF1944910900159770 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				0A8B93AD1944910900159770 /* RealSyncStatus */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		0A8B93AC1944910900159770 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0A8B93BC1944910900159770 /* InfoPlist.strings in Resources */,
+				0A14CD061AF51C1D003CACC7 /* StatusHighlighted@2x.png in Resources */,
+				0AC96E3F194DFF59002AAD7C /* Status.png in Resources */,
+				0A14CD051AF51C1D003CACC7 /* Status@2x.png in Resources */,
+				0AC96E40194DFF59002AAD7C /* StatusHighlighted.png in Resources */,
+				0A8B93CA1944910900159770 /* Images.xcassets in Resources */,
+				0A8B93C81944910900159770 /* MainMenu.xib in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0A8B93AA1944910900159770 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0A8B93E71944922500159770 /* StatusItemView.m in Sources */,
+				0A8B93C51944910900159770 /* AppDelegate.m in Sources */,
+				0A8B93BE1944910900159770 /* main.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		0A8B93BA1944910900159770 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				0A8B93BB1944910900159770 /* en */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+		0A8B93C61944910900159770 /* MainMenu.xib */ = {
+			isa = PBXVariantGroup;
+			children = (
+				0A8B93C71944910900159770 /* Base */,
+			);
+			name = MainMenu.xib;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		0A8B93DD1944910900159770 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_ENABLE_OBJC_EXCEPTIONS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		0A8B93DE1944910900159770 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_ENABLE_OBJC_EXCEPTIONS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		0A8B93E01944910900159770 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				GCC_PRECOMPILE_PREFIX_HEADER = YES;
+				GCC_PREFIX_HEADER = "RealSyncStatus/RealSyncStatus-Prefix.pch";
+				INFOPLIST_FILE = "RealSyncStatus/RealSyncStatus-Info.plist";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				WRAPPER_EXTENSION = app;
+			};
+			name = Debug;
+		};
+		0A8B93E11944910900159770 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				GCC_PRECOMPILE_PREFIX_HEADER = YES;
+				GCC_PREFIX_HEADER = "RealSyncStatus/RealSyncStatus-Prefix.pch";
+				INFOPLIST_FILE = "RealSyncStatus/RealSyncStatus-Info.plist";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				WRAPPER_EXTENSION = app;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0A8B93A91944910900159770 /* Build configuration list for PBXProject "RealSyncStatus" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0A8B93DD1944910900159770 /* Debug */,
+				0A8B93DE1944910900159770 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		0A8B93DF1944910900159770 /* Build configuration list for PBXNativeTarget "RealSyncStatus" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0A8B93E01944910900159770 /* Debug */,
+				0A8B93E11944910900159770 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 0A8B93A61944910900159770 /* Project object */;
+}
