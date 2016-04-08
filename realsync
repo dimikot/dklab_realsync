@@ -543,12 +543,12 @@ sub do_install {
         };
 
         push @config, {
-        "name"    => "#rsync_threshold",
-        "value"   => "10",
-        "comment" => "How many files triggers an rsync, vs a file by file transfer.",
-    };
+            "name"    => "#rsync_threshold",
+            "value"   => "10",
+            "comment" => "How many files triggers an rsync, vs a file by file transfer.",
+        };
 
-    push @config, {
+        push @config, {
             "name"    => "#rsync_options",
             "value"   => join(" ", @RSYNC_OPTIONS),
             "comment" => "Options passed to RSYNC.",
