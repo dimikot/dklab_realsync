@@ -1269,7 +1269,7 @@ sub init_env {
     # dir:  rwxrwxr-x
     # file: rw-rw-r--
     push @RSYNC_OPTIONS, (
-        "--perms=off", "--chmod=ug=rwX,o=rX",
+        "--chmod=ug=rwX,o=rX",
     );
 }
 
