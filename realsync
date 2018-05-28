@@ -33,8 +33,9 @@ my @SSH_OPTIONS = (
     "-o", "StrictHostKeyChecking=no",
 );
 my @RSYNC_OPTIONS = (
-    "-rltzxv",
+    "-rltzxvS",
     "--delete",
+    "--partial"
 );
 my @RSYNC_WRAPPER = ();
 my @RSYNC_SSH_WRAPPER = ();
