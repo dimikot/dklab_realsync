@@ -125,6 +125,10 @@ sub mainloop {
         $FILE_IDENTITY = $CONFIG{identity};
     }
 
+    # Set the number of changes that will trigger an rsync from the config file
+    $MIN_CHANGES_FOR_RSYNC = cfg("rsync_threshold");
+    print "mainloop MIN_CHANGES_FOR_RSYNC: $MIN_CHANGES_FOR_RSYNC\n";
+
     # We MUST avoid chdir: in Cygwin we have problems with non-ASCII names.
     -d cfg("local") or die "Bad local directory " . cfg("local") . ": $!\n";
 
@@ -540,6 +544,12 @@ sub do_install {
         };
 
         push @config, {
+            "name"    => "#rsync_threshold",
+            "value"   => "10",
+            "comment" => "How many files triggers an rsync, vs a file by file transfer.",
+        };
+
+        push @config, {
             "name"    => "#rsync_options",
             "value"   => join(" ", @RSYNC_OPTIONS),
             "comment" => "Options passed to RSYNC.",
@@ -629,6 +639,9 @@ sub cfg {
     }
     if ($name eq "rsync_options") {
         $value ||= join(" ", @RSYNC_OPTIONS);
+    }
+    if ($name eq "rsync_threshold") {
+        $value ||= $MIN_CHANGES_FOR_RSYNC;
     }
     if (!$nodie) {
         if (!defined $value) {
